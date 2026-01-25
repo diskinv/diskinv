@@ -1,0 +1,62 @@
+# Xcode build directories
+build/
+DerivedData/
+*.build/
+
+# Xcode user-specific files
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Xcode project files (keep shared schemes)
+*.xcodeproj/project.xcworkspace/
+!*.xcodeproj/project.xcworkspace/xcshareddata/
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Finder folder attributes
+.Spotlight-V100
+.Trashes
+
+# Archives and packages
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+
+# CocoaPods (if used)
+Pods/
+
+# Carthage (if used)
+Carthage/Build/
+
+# Temporary files
+*.swp
+*.swo
+*~
+
+# Code coverage
+*.gcda
+*.gcno
+*.gcov
+
+# Instruments
+*.trace
+
+# Archives
+*.xcarchive
+
+# Claude Code
+.claude/
