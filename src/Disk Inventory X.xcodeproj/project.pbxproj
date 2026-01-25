@@ -15,13 +15,14 @@
 		FC2C2CA3238C802600D04E20 /* macOS privacy protected folders.txt in Resources */ = {isa = PBXBuildFile; fileRef = FC2C2CA1238C802600D04E20 /* macOS privacy protected folders.txt */; };
 		FC2E58FF21D3BFDF00F6F03B /* Disk Inventory Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = FC2E58FE21D3BFDF00F6F03B /* Disk Inventory Icon.png */; };
 		FC33B45A230C846F00133632 /* NSURL-Extensions.m in Sources */ = {isa = PBXBuildFile; fileRef = FC33B459230C846F00133632 /* NSURL-Extensions.m */; };
-		FC347FA122CBDFED0002CDED /* OmniAppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FC347F9322CBDF650002CDED /* OmniAppKit.framework */; };
-		FC347FA222CBDFED0002CDED /* OmniBase.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FC347F9422CBDF660002CDED /* OmniBase.framework */; };
-		FC347FA322CBDFED0002CDED /* OmniFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FC347F9222CBDF650002CDED /* OmniFoundation.framework */; };
+		FCDIX001000000000001 /* NSString+DIXExtensions.m in Sources */ = {isa = PBXBuildFile; fileRef = FCDIX002000000000001 /* NSString+DIXExtensions.m */; };
+		FCDIX001000000000002 /* NSMutableArray+DIXExtensions.m in Sources */ = {isa = PBXBuildFile; fileRef = FCDIX002000000000002 /* NSMutableArray+DIXExtensions.m */; };
+		FCDIX001000000000003 /* NSDictionary+DIXExtensions.m in Sources */ = {isa = PBXBuildFile; fileRef = FCDIX002000000000003 /* NSDictionary+DIXExtensions.m */; };
+		FCDIX001000000000004 /* NSString+DIXUnicode.m in Sources */ = {isa = PBXBuildFile; fileRef = FCDIX002000000000004 /* NSString+DIXUnicode.m */; };
+		FCDIX001000000000005 /* DIXToolbarWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = FCDIX002000000000005 /* DIXToolbarWindowController.m */; };
+		FCDIX001000000000006 /* DIXPreferenceClient.m in Sources */ = {isa = PBXBuildFile; fileRef = FCDIX002000000000006 /* DIXPreferenceClient.m */; };
+		FCDIX001000000000007 /* DIXPreferenceController.m in Sources */ = {isa = PBXBuildFile; fileRef = FCDIX002000000000007 /* DIXPreferenceController.m */; };
 		FC347FA722CBE0340002CDED /* TreeMapView.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = FC347F9822CBDF870002CDED /* TreeMapView.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		FC347FA822CBE0340002CDED /* OmniAppKit.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = FC347F9322CBDF650002CDED /* OmniAppKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		FC347FA922CBE0340002CDED /* OmniBase.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = FC347F9422CBDF660002CDED /* OmniBase.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		FC347FAA22CBE0340002CDED /* OmniFoundation.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = FC347F9222CBDF650002CDED /* OmniFoundation.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		FC4C4AC109802035004CCA22 /* Help in Resources */ = {isa = PBXBuildFile; fileRef = FC4C4ABF09802035004CCA22 /* Help */; };
 		FC4C4FF70981520A004CCA22 /* AppsForItem.m in Sources */ = {isa = PBXBuildFile; fileRef = FC4C4FF50981520A004CCA22 /* AppsForItem.m */; };
 		FC7F775D1067BAB10090E839 /* NTFilePasteboardSource.m in Sources */ = {isa = PBXBuildFile; fileRef = FC7F775C1067BAB10090E839 /* NTFilePasteboardSource.m */; };
@@ -103,9 +104,6 @@
 			dstSubfolderSpec = 10;
 			files = (
 				FC347FA722CBE0340002CDED /* TreeMapView.framework in CopyFiles */,
-				FC347FA822CBE0340002CDED /* OmniAppKit.framework in CopyFiles */,
-				FC347FA922CBE0340002CDED /* OmniBase.framework in CopyFiles */,
-				FC347FAA22CBE0340002CDED /* OmniFoundation.framework in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -152,10 +150,21 @@
 		FC2E58FE21D3BFDF00F6F03B /* Disk Inventory Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Disk Inventory Icon.png"; sourceTree = "<group>"; };
 		FC33B458230C846F00133632 /* NSURL-Extensions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSURL-Extensions.h"; sourceTree = SOURCE_ROOT; };
 		FC33B459230C846F00133632 /* NSURL-Extensions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NSURL-Extensions.m"; sourceTree = SOURCE_ROOT; };
-		FC347F9222CBDF650002CDED /* OmniFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OmniFoundation.framework; path = "../../../../OmniFrameworks_2018-09-22/Build/Release/OmniFoundation.framework"; sourceTree = "<group>"; };
-		FC347F9322CBDF650002CDED /* OmniAppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OmniAppKit.framework; path = "../../../../OmniFrameworks_2018-09-22/Build/Release/OmniAppKit.framework"; sourceTree = "<group>"; };
-		FC347F9422CBDF660002CDED /* OmniBase.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OmniBase.framework; path = "../../../../OmniFrameworks_2018-09-22/Build/Release/OmniBase.framework"; sourceTree = "<group>"; };
-		FC347F9822CBDF870002CDED /* TreeMapView.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = TreeMapView.framework; path = ../../../../TreeMapView/vdev/make/src/build/Release/TreeMapView.framework; sourceTree = "<group>"; };
+		FCDIX002000000000001 /* NSString+DIXExtensions.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSString+DIXExtensions.m"; sourceTree = "<group>"; };
+		FCDIX002000000000011 /* NSString+DIXExtensions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSString+DIXExtensions.h"; sourceTree = "<group>"; };
+		FCDIX002000000000002 /* NSMutableArray+DIXExtensions.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSMutableArray+DIXExtensions.m"; sourceTree = "<group>"; };
+		FCDIX002000000000012 /* NSMutableArray+DIXExtensions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSMutableArray+DIXExtensions.h"; sourceTree = "<group>"; };
+		FCDIX002000000000003 /* NSDictionary+DIXExtensions.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSDictionary+DIXExtensions.m"; sourceTree = "<group>"; };
+		FCDIX002000000000013 /* NSDictionary+DIXExtensions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSDictionary+DIXExtensions.h"; sourceTree = "<group>"; };
+		FCDIX002000000000004 /* NSString+DIXUnicode.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSString+DIXUnicode.m"; sourceTree = "<group>"; };
+		FCDIX002000000000014 /* NSString+DIXUnicode.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSString+DIXUnicode.h"; sourceTree = "<group>"; };
+		FCDIX002000000000005 /* DIXToolbarWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "DIXToolbarWindowController.m"; sourceTree = "<group>"; };
+		FCDIX002000000000015 /* DIXToolbarWindowController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "DIXToolbarWindowController.h"; sourceTree = "<group>"; };
+		FCDIX002000000000006 /* DIXPreferenceClient.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "DIXPreferenceClient.m"; sourceTree = "<group>"; };
+		FCDIX002000000000016 /* DIXPreferenceClient.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "DIXPreferenceClient.h"; sourceTree = "<group>"; };
+		FCDIX002000000000007 /* DIXPreferenceController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "DIXPreferenceController.m"; sourceTree = "<group>"; };
+		FCDIX002000000000017 /* DIXPreferenceController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "DIXPreferenceController.h"; sourceTree = "<group>"; };
+		FC347F9822CBDF870002CDED /* TreeMapView.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = TreeMapView.framework; path = Frameworks/TreeMapView.framework; sourceTree = "<group>"; };
 		FC42B8622202405A0080570A /* es */ = {isa = PBXFileReference; lastKnownFileType = wrapper.nib; name = es; path = es.lproj/TreeMapPreferencesPage.nib; sourceTree = "<group>"; };
 		FC42B8632202405A0080570A /* es */ = {isa = PBXFileReference; lastKnownFileType = wrapper.nib; name = es; path = es.lproj/GeneralPreferencesPage.nib; sourceTree = "<group>"; };
 		FC42B8642202405A0080570A /* es */ = {isa = PBXFileReference; lastKnownFileType = wrapper.nib; name = es; path = es.lproj/FinderCMPreferencesPage.nib; sourceTree = "<group>"; };
@@ -298,9 +307,6 @@
 				FC2B2BBD277E47320040ED6C /* Foundation.framework in Frameworks */,
 				FC2B2BBB277E472C0040ED6C /* Cocoa.framework in Frameworks */,
 				FC2B2BBC277E472F0040ED6C /* AppKit.framework in Frameworks */,
-				FC347FA122CBDFED0002CDED /* OmniAppKit.framework in Frameworks */,
-				FC347FA222CBDFED0002CDED /* OmniBase.framework in Frameworks */,
-				FC347FA322CBDFED0002CDED /* OmniFoundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -421,9 +427,6 @@
 		FC66DCF5107A28A500F46D76 /* OmniGroup */ = {
 			isa = PBXGroup;
 			children = (
-				FC347F9322CBDF650002CDED /* OmniAppKit.framework */,
-				FC347F9422CBDF660002CDED /* OmniBase.framework */,
-				FC347F9222CBDF650002CDED /* OmniFoundation.framework */,
 			);
 			name = OmniGroup;
 			sourceTree = "<group>";
@@ -465,6 +468,20 @@
 			children = (
 				FCCFB2B5097FA42B009EA2B6 /* OAToolbarWindowControllerEx.h */,
 				FCCFB2B6097FA42B009EA2B6 /* OAToolbarWindowControllerEx.m */,
+				FCDIX002000000000011 /* NSString+DIXExtensions.h */,
+				FCDIX002000000000001 /* NSString+DIXExtensions.m */,
+				FCDIX002000000000012 /* NSMutableArray+DIXExtensions.h */,
+				FCDIX002000000000002 /* NSMutableArray+DIXExtensions.m */,
+				FCDIX002000000000013 /* NSDictionary+DIXExtensions.h */,
+				FCDIX002000000000003 /* NSDictionary+DIXExtensions.m */,
+				FCDIX002000000000014 /* NSString+DIXUnicode.h */,
+				FCDIX002000000000004 /* NSString+DIXUnicode.m */,
+				FCDIX002000000000015 /* DIXToolbarWindowController.h */,
+				FCDIX002000000000005 /* DIXToolbarWindowController.m */,
+				FCDIX002000000000016 /* DIXPreferenceClient.h */,
+				FCDIX002000000000006 /* DIXPreferenceClient.m */,
+				FCDIX002000000000017 /* DIXPreferenceController.h */,
+				FCDIX002000000000007 /* DIXPreferenceController.m */,
 			);
 			name = OmniAppKitExtensions;
 			sourceTree = "<group>";
@@ -813,6 +830,13 @@
 				FC7F77D71067C9500090E839 /* NTTitledInfoPair.m in Sources */,
 				FC7F77D81067C9500090E839 /* NTTitledInfoView.m in Sources */,
 				FC33B45A230C846F00133632 /* NSURL-Extensions.m in Sources */,
+				FCDIX001000000000001 /* NSString+DIXExtensions.m in Sources */,
+				FCDIX001000000000002 /* NSMutableArray+DIXExtensions.m in Sources */,
+				FCDIX001000000000003 /* NSDictionary+DIXExtensions.m in Sources */,
+				FCDIX001000000000004 /* NSString+DIXUnicode.m in Sources */,
+				FCDIX001000000000005 /* DIXToolbarWindowController.m in Sources */,
+				FCDIX001000000000006 /* DIXPreferenceClient.m in Sources */,
+				FCDIX001000000000007 /* DIXPreferenceController.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -990,10 +1014,8 @@
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(FRAMEWORK_SEARCH_PATHS)",
 					"$(FRAMEWORK_SEARCH_PATHS_TREEMAP)",
-					"$(FRAMEWORK_SEARCH_PATHS_OMNI)",
 				);
-				FRAMEWORK_SEARCH_PATHS_OMNI = "\"$(SRCROOT)/../../../../OmniFrameworks_2018-09-22/Build/Products/Debug\"";
-				FRAMEWORK_SEARCH_PATHS_TREEMAP = "\"$(SRCROOT)/../../../../TreeMapView/vdev/make/Build/Products/Debug\"";
+				FRAMEWORK_SEARCH_PATHS_TREEMAP = "\"$(SRCROOT)/Frameworks\"";
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PREPROCESSOR_DEFINITIONS = "DEBUG=1";
@@ -1026,10 +1048,8 @@
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(FRAMEWORK_SEARCH_PATHS)",
 					"$(FRAMEWORK_SEARCH_PATHS_TREEMAP)",
-					"$(FRAMEWORK_SEARCH_PATHS_OMNI)",
 				);
-				FRAMEWORK_SEARCH_PATHS_OMNI = "\"$(SRCROOT)/../../../../OmniFrameworks_2018-09-22/Build/Release\"";
-				FRAMEWORK_SEARCH_PATHS_TREEMAP = "\"$(SRCROOT)/../../../../TreeMapView/vdev/make/src/Build/Release\"";
+				FRAMEWORK_SEARCH_PATHS_TREEMAP = "\"$(SRCROOT)/Frameworks\"";
 				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = "";
 				GCC_VERSION = "";

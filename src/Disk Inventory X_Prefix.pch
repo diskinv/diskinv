@@ -6,8 +6,11 @@
     #import <Cocoa/Cocoa.h>
     #import <Carbon/Carbon.h>
 
-    #import <OmniBase/OmniBase.h>
-
+    // OmniBase removed - using standard Cocoa
+    // Replace OBPRECONDITION with NSCParameterAssert (assertion macro for preconditions)
+    #define OBPRECONDITION(condition) NSCParameterAssert(condition)
+    #define OBASSERT(condition) NSCAssert(condition, @"Assertion failed: " #condition)
+    #define OBASSERT_NOT_REACHED(msg) NSCAssert(NO, msg)
 
 	//global variable which enables/disables logging
 	extern BOOL g_EnableLogging;

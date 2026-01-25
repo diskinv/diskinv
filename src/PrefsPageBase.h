@@ -14,7 +14,7 @@
 //
 
 #import <Cocoa/Cocoa.h>
-#import <OmniAppKit/OAPreferenceClient.h>
+#import "DIXPreferenceClient.h"
 
-@interface PrefsPageBase : OAPreferenceClient
+@interface PrefsPageBase : DIXPreferenceClient
 @end

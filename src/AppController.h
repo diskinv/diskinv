@@ -12,13 +12,11 @@
 //  of the License, or any later version.
 //
 
-#import <OmniAppKit/OAController.h>
-
 #import <Cocoa/Cocoa.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface AppController : OAController
+@interface AppController : NSObject <NSApplicationDelegate>
 {
 //    IBOutlet NSMenu* _zoomStackMenu;
 //    IBOutlet NSPanel* _donationPanel;

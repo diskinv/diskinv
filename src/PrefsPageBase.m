@@ -14,11 +14,10 @@
 //
 
 #import "PrefsPageBase.h"
-#import <OmniFoundation/OFNull.h>
 
 @implementation PrefsPageBase
 
-- (void)restoreDefaultsNoPrompt;
+- (void)restoreDefaultsNoPrompt
 {
     [super restoreDefaultsNoPrompt];
 #pragma warning "code diabled"
@@ -40,7 +39,7 @@
      */
 }
 
-- (BOOL)haveAnyDefaultsChanged;
+- (BOOL)haveAnyDefaultsChanged
 {
     return [super haveAnyDefaultsChanged];
 #pragma warning "code diabled"

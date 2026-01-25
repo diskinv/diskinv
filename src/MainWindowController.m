@@ -21,7 +21,7 @@
 #import "FSItem-Utilities.h"
 #import "FileSizeTransformer.h"
 #import "AppsForItem.h"
-#import <OmniFoundation/NSString-OFExtensions.h>
+#import "NSString+DIXExtensions.h"
 #import "NSURL-Extensions.h"
 
 @interface MainWindowController(Private)

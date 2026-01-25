@@ -14,7 +14,7 @@
 //
 
 #import <Cocoa/Cocoa.h>
-#import <OmniAppKit/OAToolbarWindowController.h>
+#import "DIXToolbarWindowController.h"
 
 @interface NSToolbarItemValidationAdapter : NSObject
 {
@@ -26,7 +26,7 @@
 
 @end
 
-@interface OAToolbarWindowControllerEx : OAToolbarWindowController {
+@interface OAToolbarWindowControllerEx : DIXToolbarWindowController {
 
 }
 

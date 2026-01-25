@@ -4,13 +4,12 @@
 #import "FileSystemDoc.h"
 #import <TreeMapView/TreeMapView.h>
 #import "OAToolbarWindowControllerEx.h"
-#import <OmniAppKit/OASplitView.h>
 
 @interface MainWindowController : OAToolbarWindowControllerEx
 {
     IBOutlet NSDrawer *_kindsDrawer;
     IBOutlet NSDrawer *_selectionListDrawer;
-	IBOutlet OASplitView *_splitter;
+	IBOutlet NSSplitView *_splitter;
 	IBOutlet NSOutlineView *_filesOutlineView;
 	IBOutlet TreeMapView *_treeMapView;
 	IBOutlet NSMenu *_openWithSubMenu;

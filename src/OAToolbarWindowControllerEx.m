@@ -14,8 +14,7 @@
 //
 
 #import "OAToolbarWindowControllerEx.h"
-#import <OmniFoundation/NSString-OFExtensions.h>
-#import <OmniAppKit/OAToolbarItem.h>
+#import "NSString+DIXExtensions.h"
 
 @implementation NSToolbarItemValidationAdapter
 
@@ -245,13 +244,9 @@ static NSMutableDictionary *g_toolbatStateImages = nil;
             [toolbarItem setToolTip:toolTip];
     }
 
-    //NSToolbarItem calls it's target to validate itself (through validateToolbarItem:).
-	//If the target is not self we have no control over the validation.
-	//This "problem" can be solved to set ourself as the delegate. OAToolbarItem's delegate
-	//has the last word in the validation process.
-	//(OAToolbarWindowController does this only for items with a custom view).
-    [(OAToolbarItem*)toolbarItem setDelegate: self];
-	
+    // Standard NSToolbarItem validation through validateToolbarItem: is used
+	// (OAToolbarItem delegate mechanism removed during Omni dependency removal)
+
 	return toolbarItem;
 }
 

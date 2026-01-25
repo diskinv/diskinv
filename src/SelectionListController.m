@@ -16,7 +16,7 @@
 #import "SelectionListController.h"
 #import "FileSystemDoc.h"
 #import "FileKindsPopupController.h"
-#import <OmniFoundation/NSString-OFExtensions.h>
+#import "NSString+DIXExtensions.h"
 #import "Timing.h"
 
 @interface SelectionListController(Privat)
