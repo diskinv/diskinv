@@ -1,0 +1,56 @@
+{
+  "source": "/Users/mla/b/disk-inventory-x/DiskInventoryX/Views/FileList/FileListView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Files",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 31
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open a folder to see its contents",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 27
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Data",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 25
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show in Finder",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 78
+        }
+      },
+      {
+        "comment": "",
+        "key": "Zoom Into",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 83
+        }
+      },
+      {
+        "comment": "",
+        "key": "Move to Trash",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 91
+        }
+      }
+    ]
+  },
+  "version": 1
+}

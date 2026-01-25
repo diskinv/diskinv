@@ -1,0 +1,64 @@
+{
+  "buildCommand" : {
+    "command" : "build",
+    "skipDependencies" : false,
+    "style" : "buildOnly"
+  },
+  "configuredTargets" : [
+    {
+      "guid" : "41583f92866cc37d456a4c39a2c19cb390737c159d5a085baca51f2cb278284f"
+    }
+  ],
+  "containerPath" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/DiskInventoryX.xcodeproj",
+  "continueBuildingAfterErrors" : false,
+  "dependencyScope" : "workspace",
+  "enableIndexBuildArena" : false,
+  "hideShellScriptEnvironment" : false,
+  "parameters" : {
+    "action" : "build",
+    "activeArchitecture" : "arm64",
+    "activeRunDestination" : {
+      "disableOnlyActiveArch" : false,
+      "platform" : "macosx",
+      "sdk" : "macosx26.2",
+      "sdkVariant" : "macos",
+      "supportedArchitectures" : [
+        "arm64e",
+        "arm64",
+        "x86_64"
+      ],
+      "targetArchitecture" : "arm64"
+    },
+    "arenaInfo" : {
+      "buildIntermediatesPath" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex",
+      "buildProductsPath" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Products",
+      "derivedDataPath" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build",
+      "indexDataStoreFolderPath" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Index.noindex/DataStore",
+      "indexEnableDataStore" : true,
+      "indexPCHPath" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Index.noindex/PrecompiledHeaders",
+      "pchPath" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/PrecompiledHeaders"
+    },
+    "configurationName" : "Release",
+    "overrides" : {
+      "commandLine" : {
+        "table" : {
+
+        }
+      },
+      "synthesized" : {
+        "table" : {
+          "ACTION" : "build",
+          "ENABLE_PREVIEWS" : "NO",
+          "ENABLE_XOJIT_PREVIEWS" : "YES",
+          "ONLY_ACTIVE_ARCH" : "YES"
+        }
+      }
+    }
+  },
+  "schemeCommand" : "launch",
+  "showNonLoggedProgress" : true,
+  "useDryRun" : false,
+  "useImplicitDependencies" : true,
+  "useLegacyBuildLocations" : false,
+  "useParallelTargets" : true
+}

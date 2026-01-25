@@ -1,0 +1,12 @@
+{
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/App/DiskInventoryXApp.swift" : {
+    "abi-baseline-json" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX.abi.json",
+    "const-values" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX-primary.swiftconstvalues",
+    "dependencies" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX-primary.d",
+    "diagnostics" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX-primary.dia",
+    "objc-header" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX-Swift.h",
+    "swiftdoc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX.swiftdoc",
+    "swiftmodule" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX.swiftmodule",
+    "swiftsourceinfo" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX.swiftsourceinfo"
+  }
+}

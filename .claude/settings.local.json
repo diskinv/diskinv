@@ -7,7 +7,11 @@
       "Bash(lipo -info:*)",
       "WebSearch",
       "WebFetch(domain:gitlab.com)",
-      "Bash(xcodebuild:*)"
+      "Bash(xcodebuild:*)",
+      "Bash(open:*)",
+      "Bash(pgrep:*)",
+      "Bash(chmod:*)",
+      "Bash(./BuildRelease.sh:*)"
     ]
   }
 }

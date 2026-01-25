@@ -1,0 +1,272 @@
+{
+  "source": "/Users/mla/b/disk-inventory-x/DiskInventoryX/Views/Settings/SettingsView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "General",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 15
+        }
+      },
+      {
+        "comment": "",
+        "key": "TreeMap",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 20
+        }
+      },
+      {
+        "comment": "",
+        "key": "About",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 25
+        }
+      },
+      {
+        "comment": "",
+        "key": "File Sizes",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 41
+        }
+      },
+      {
+        "comment": "",
+        "key": "Packages & Bundles",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 46
+        }
+      },
+      {
+        "comment": "",
+        "key": "Volume Display",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 54
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show physical file size (disk space used)",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 42
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show the actual disk space used instead of logical file size",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 43
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show package contents",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 47
+        }
+      },
+      {
+        "comment": "",
+        "key": "Display contents of application bundles and packages",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 48
+        }
+      },
+      {
+        "comment": "",
+        "key": "Ignore creator codes when determining file type",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 50
+        }
+      },
+      {
+        "comment": "",
+        "key": "Use file extension instead of legacy creator codes",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 51
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show free space",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 55
+        }
+      },
+      {
+        "comment": "",
+        "key": "Display free space on the volume in the treemap",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 56
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show other space",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 58
+        }
+      },
+      {
+        "comment": "",
+        "key": "Display space used by other files on the volume",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 59
+        }
+      },
+      {
+        "comment": "",
+        "key": "Appearance",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 74
+        }
+      },
+      {
+        "comment": "",
+        "key": "Performance",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 82
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cushion shading",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 75
+        }
+      },
+      {
+        "comment": "",
+        "key": "Apply gradient shading for a 3D cushion effect",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 76
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show file name labels",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 78
+        }
+      },
+      {
+        "comment": "",
+        "key": "Display file names on treemap rectangles",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 79
+        }
+      },
+      {
+        "comment": "",
+        "key": "Smaller values show more detail but may be slower",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 92
+        }
+      },
+      {
+        "comment": "",
+        "key": "Minimum size in pixels for treemap rectangles",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 90
+        }
+      },
+      {
+        "comment": "",
+        "key": "Minimum rectangle size",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 84
+        }
+      },
+      {
+        "comment": "",
+        "key": "1",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 86
+        }
+      },
+      {
+        "comment": "",
+        "key": "10",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 88
+        }
+      },
+      {
+        "comment": "",
+        "key": "Disk Inventory X",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 109
+        }
+      },
+      {
+        "comment": "",
+        "key": "Version 2.0",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 113
+        }
+      },
+      {
+        "comment": "",
+        "key": "A disk usage visualization tool using treemaps",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 116
+        }
+      },
+      {
+        "comment": "",
+        "key": "Originally by Tjark Derlien",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 122
+        }
+      },
+      {
+        "comment": "",
+        "key": "Swift rewrite - 2024",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 126
+        }
+      },
+      {
+        "comment": "",
+        "key": "GPL v3 License",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 130
+        }
+      }
+    ]
+  },
+  "version": 1
+}
