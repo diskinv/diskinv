@@ -12,11 +12,8 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: $appState.selectedKind) {
-            Section("File Types") {
-                if appState.kindStatistics.isEmpty {
-                    Text("No data")
-                        .foregroundStyle(.secondary)
-                } else {
+            if !appState.kindStatistics.isEmpty {
+                Section("File Types") {
                     ForEach(appState.kindStatistics) { stat in
                         FileKindRow(statistic: stat)
                             .tag(stat.kindName)

@@ -20,12 +20,6 @@ struct FileListView: View {
                     }
                 }
                 .listStyle(.inset(alternatesRowBackgrounds: true))
-            } else {
-                ContentUnavailableView(
-                    "No Data",
-                    systemImage: "folder",
-                    description: Text("Open a folder to see its contents")
-                )
             }
         }
         .navigationTitle("Files")

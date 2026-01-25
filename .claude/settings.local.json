@@ -11,7 +11,8 @@
       "Bash(open:*)",
       "Bash(pgrep:*)",
       "Bash(chmod:*)",
-      "Bash(./BuildRelease.sh:*)"
+      "Bash(./BuildRelease.sh:*)",
+      "Bash(pkill:*)"
     ]
   }
 }

@@ -119,8 +119,8 @@ struct TreeMapView: View {
             lineWidth: 0.5
         )
 
-        // Label if rect is large enough
-        if rect.width > 60 && rect.height > 24 {
+        // Label if rect is large enough (diagonal text fits in smaller rects)
+        if rect.width > 30 && rect.height > 16 {
             drawLabel(treeRect.node.name, in: rect, context: context)
         }
     }
@@ -147,19 +147,59 @@ struct TreeMapView: View {
     }
 
     private func drawLabel(_ text: String, in rect: CGRect, context: GraphicsContext) {
-        let fontSize = min(11, rect.height - 6)
-        guard fontSize >= 8 else { return }
+        // Font size based on smaller dimension
+        let fontSize = min(11, min(rect.height, rect.width) * 0.35)
+        guard fontSize >= 7 else { return }
 
-        let resolvedText = Text(text)
-            .font(.system(size: fontSize))
-            .foregroundColor(.white.opacity(0.85))
+        let styledText = Text(text)
+            .font(.system(size: fontSize, weight: .medium))
+            .foregroundColor(.white.opacity(0.9))
 
-        // Draw with shadow for readability
-        context.draw(
-            resolvedText,
-            at: CGPoint(x: rect.midX, y: rect.midY),
-            anchor: .center
-        )
+        // Measure the text to see if it fits horizontally
+        let resolvedText = context.resolve(styledText)
+        let textSize = resolvedText.measure(in: CGSize(width: .max, height: .max))
+
+        let paddingX: CGFloat = 6
+        let paddingY: CGFloat = 3
+        let availableWidth = rect.width - (paddingX * 2)
+
+        // Check if text fits horizontally
+        let fitsHorizontally = textSize.width <= availableWidth
+
+        // Create a clipped context so text doesn't overflow
+        var clippedContext = context
+        clippedContext.clip(to: Path(rect))
+
+        if fitsHorizontally {
+            // Draw horizontally, centered vertically, left-aligned
+            let startX = rect.minX + paddingX
+            let startY = rect.maxY - paddingY
+
+            clippedContext.draw(
+                resolvedText,
+                at: CGPoint(x: startX, y: startY),
+                anchor: .bottomLeading
+            )
+        } else {
+            // Calculate the actual diagonal angle from bottom-left to top-right
+            let diagonalAngle = atan2(rect.height, rect.width)
+            let angleInDegrees = diagonalAngle * 180 / .pi
+
+            // Position at bottom-left with padding
+            let startX = rect.minX + paddingX
+            let startY = rect.maxY - paddingY
+
+            // Rotate by the actual diagonal angle (negative = counter-clockwise)
+            clippedContext.translateBy(x: startX, y: startY)
+            clippedContext.rotate(by: .degrees(-angleInDegrees))
+
+            // Draw the text along the diagonal
+            clippedContext.draw(
+                resolvedText,
+                at: CGPoint(x: 0, y: 0),
+                anchor: .bottomLeading
+            )
+        }
     }
 
     private func adjustBrightness(_ color: Color, factor: Double) -> Color {
