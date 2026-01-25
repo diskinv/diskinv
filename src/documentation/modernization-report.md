@@ -1747,6 +1747,363 @@ A hybrid approach is also viable: get Apple Silicon working incrementally first,
 
 ---
 
+## Implementation Notes & Lessons Learned (January 2026)
+
+This section documents practical lessons from completing Phases 1-2 of the modernization.
+
+### Phase 2 Completion Summary
+
+**Files Created (Omni Replacements):**
+```
+src/NSString+DIXExtensions.h/.m      - isEmptyString: replacement
+src/NSMutableArray+DIXExtensions.h/.m - insertObject:inArraySortedUsingSelector:
+src/NSDictionary+DIXExtensions.h/.m  - boolForKey:, setBoolValue:forKey:, etc.
+src/NSString+DIXUnicode.h/.m         - horizontalEllipsisString
+src/DIXToolbarWindowController.h/.m  - OAToolbarWindowController replacement
+src/DIXPreferenceClient.h/.m         - OAPreferenceClient replacement
+src/DIXPreferenceController.h/.m     - OAPreferenceController replacement
+```
+
+**Files Modified:**
+- `Info.plist` - Changed NSPrincipalClass from OAApplication to NSApplication
+- `Disk Inventory X_Prefix.pch` - Removed OmniBase import, added OBPRECONDITION macro
+- `AppController.h` - Changed base class from OAController to NSObject<NSApplicationDelegate>
+- `MainWindowController.h` - Changed OASplitView to NSSplitView
+- `OAToolbarWindowControllerEx.h/.m` - Changed base class to DIXToolbarWindowController
+- `PrefsPageBase.h/.m` - Changed base class to DIXPreferenceClient
+- `PrefsPanelController.h/.m` - Changed base class to DIXPreferenceController
+- All source files with Omni imports updated to DIX extensions
+
+### Key Gotchas Discovered
+
+1. **NSPrincipalClass in Info.plist**
+   - The app crashes at launch with "Unable to find class: OAApplication" if Info.plist still references the Omni application class
+   - Must change `<key>NSPrincipalClass</key><string>OAApplication</string>` to `NSApplication`
+
+2. **OBPRECONDITION Macro**
+   - OmniBase defines assertion macros used throughout the codebase
+   - Simple replacement: `#define OBPRECONDITION(condition) NSCParameterAssert(condition)`
+   - Also need OBASSERT and OBASSERT_NOT_REACHED
+
+3. **OAPasteboardHelper**
+   - Used in NTFilePasteboardSource.m for lazy pasteboard data
+   - Direct replacement: `[pboard declareTypes:types owner:self]` (standard NSPasteboard API)
+
+4. **Toolbar Configuration Files**
+   - The app uses .toolbar plist files for toolbar configuration
+   - DIXToolbarWindowController reads these and creates NSToolbarItems
+   - Format: `{ items: { identifier: { label, toolTip, imageName, action, target } }, defaultItems: [], allowedItems: [] }`
+
+5. **Preferences System Complexity**
+   - OAPreferenceController/OAPreferenceClient is deeply integrated
+   - The existing implementation had most complex code commented out with `#pragma warning "code disabled"`
+   - Simplified stubs work because preferences are bound directly via NSUserDefaults
+
+6. **Framework Search Paths**
+   - Must remove FRAMEWORK_SEARCH_PATHS_OMNI from both Debug and Release configurations
+   - Also remove from framework group, build phases, and copy files phase
+
+### Architecture for Swift Migration
+
+Based on implementation experience, here's a practical Swift architecture:
+
+```swift
+// MARK: - File System Model (replaces FSItem)
+
+@Observable
+class FileNode: Identifiable {
+    let id = UUID()
+    let url: URL
+    let name: String
+    let isDirectory: Bool
+    let isPackage: Bool
+    var size: UInt64 = 0
+    var physicalSize: UInt64 = 0
+    var children: [FileNode] = []
+    weak var parent: FileNode?
+
+    // Computed from UTType
+    var kindName: String { UTType(filenameExtension: url.pathExtension)?.localizedDescription ?? "Unknown" }
+    var uniformTypeIdentifier: String { UTType(filenameExtension: url.pathExtension)?.identifier ?? "public.data" }
+}
+
+// MARK: - Scanner Actor (thread-safe scanning)
+
+actor FileScanner {
+    private var isCancelled = false
+
+    func scan(url: URL, progress: @escaping (Int, Int) -> Void) async throws -> FileNode {
+        let root = FileNode(url: url)
+        try await scanDirectory(root, progress: progress)
+        return root
+    }
+
+    func cancel() { isCancelled = true }
+
+    private func scanDirectory(_ node: FileNode, progress: @escaping (Int, Int) -> Void) async throws {
+        guard !isCancelled else { throw CancellationError() }
+
+        let contents = try FileManager.default.contentsOfDirectory(
+            at: node.url,
+            includingPropertiesForKeys: [.fileSizeKey, .totalFileAllocatedSizeKey, .isDirectoryKey, .isPackageKey],
+            options: [.skipsHiddenFiles]
+        )
+
+        for childURL in contents {
+            let resourceValues = try childURL.resourceValues(forKeys: [.fileSizeKey, .totalFileAllocatedSizeKey, .isDirectoryKey, .isPackageKey])
+
+            let child = FileNode(url: childURL)
+            child.size = UInt64(resourceValues.fileSize ?? 0)
+            child.physicalSize = UInt64(resourceValues.totalFileAllocatedSize ?? 0)
+            child.isDirectory = resourceValues.isDirectory ?? false
+            child.isPackage = resourceValues.isPackage ?? false
+            child.parent = node
+
+            node.children.append(child)
+
+            if child.isDirectory && !child.isPackage {
+                try await scanDirectory(child, progress: progress)
+            }
+
+            node.size += child.size
+        }
+    }
+}
+
+// MARK: - TreeMap Algorithm (Squarified)
+
+struct TreeMapRect: Identifiable {
+    let id = UUID()
+    let node: FileNode
+    var rect: CGRect
+    var color: Color
+}
+
+func squarify(nodes: [FileNode], in rect: CGRect, colorProvider: (FileNode) -> Color) -> [TreeMapRect] {
+    guard !nodes.isEmpty else { return [] }
+
+    let sorted = nodes.sorted { $0.size > $1.size }
+    let totalSize = sorted.reduce(0) { $0 + $1.size }
+
+    return layoutRow(
+        items: sorted,
+        totalSize: Double(totalSize),
+        bounds: rect,
+        colorProvider: colorProvider
+    )
+}
+
+// Squarified treemap layout algorithm
+private func layoutRow(items: [FileNode], totalSize: Double, bounds: CGRect, colorProvider: (FileNode) -> Color) -> [TreeMapRect] {
+    // Implementation of Bruls, Huizing, van Wijk squarified treemap algorithm
+    // https://www.win.tue.nl/~vanwijk/stm.pdf
+    var results: [TreeMapRect] = []
+    var remaining = items
+    var currentBounds = bounds
+
+    while !remaining.isEmpty {
+        let isWide = currentBounds.width >= currentBounds.height
+        let side = isWide ? currentBounds.height : currentBounds.width
+
+        var row: [FileNode] = []
+        var rowSize: Double = 0
+        var worstRatio = Double.infinity
+
+        for item in remaining {
+            let testRow = row + [item]
+            let testSize = rowSize + Double(item.size)
+            let ratio = worst(row: testRow, rowSize: testSize, side: side, totalSize: totalSize, fullSide: isWide ? currentBounds.width : currentBounds.height)
+
+            if ratio <= worstRatio {
+                row = testRow
+                rowSize = testSize
+                worstRatio = ratio
+            } else {
+                break
+            }
+        }
+
+        // Layout the row
+        let rowFraction = rowSize / totalSize
+        let rowExtent = (isWide ? currentBounds.width : currentBounds.height) * rowFraction
+
+        var offset: CGFloat = 0
+        for item in row {
+            let itemFraction = Double(item.size) / rowSize
+            let itemExtent = side * itemFraction
+
+            let itemRect: CGRect
+            if isWide {
+                itemRect = CGRect(x: currentBounds.minX, y: currentBounds.minY + offset, width: rowExtent, height: itemExtent)
+            } else {
+                itemRect = CGRect(x: currentBounds.minX + offset, y: currentBounds.minY, width: itemExtent, height: rowExtent)
+            }
+
+            results.append(TreeMapRect(node: item, rect: itemRect, color: colorProvider(item)))
+            offset += itemExtent
+        }
+
+        // Update bounds for remaining items
+        if isWide {
+            currentBounds = CGRect(x: currentBounds.minX + rowExtent, y: currentBounds.minY,
+                                   width: currentBounds.width - rowExtent, height: currentBounds.height)
+        } else {
+            currentBounds = CGRect(x: currentBounds.minX, y: currentBounds.minY + rowExtent,
+                                   width: currentBounds.width, height: currentBounds.height - rowExtent)
+        }
+
+        remaining = Array(remaining.dropFirst(row.count))
+    }
+
+    return results
+}
+
+private func worst(row: [FileNode], rowSize: Double, side: Double, totalSize: Double, fullSide: Double) -> Double {
+    guard !row.isEmpty, rowSize > 0 else { return .infinity }
+    let rowWidth = (rowSize / totalSize) * fullSide
+    return row.map { node in
+        let h = (Double(node.size) / rowSize) * side
+        let w = rowWidth
+        return max(w/h, h/w)
+    }.max() ?? .infinity
+}
+```
+
+### SwiftUI Views Structure
+
+```swift
+// Main window with NavigationSplitView
+struct ContentView: View {
+    @State private var document: DiskDocument?
+    @State private var selectedNode: FileNode?
+    @State private var columnVisibility = NavigationSplitViewVisibility.all
+
+    var body: some View {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            // Sidebar: File kind statistics
+            if let doc = document {
+                FileKindsSidebar(document: doc, selection: $selectedNode)
+            }
+        } content: {
+            // File list outline view
+            if let doc = document {
+                FileOutlineView(root: doc.rootItem, selection: $selectedNode)
+            }
+        } detail: {
+            // TreeMap view
+            if let doc = document {
+                TreeMapView(root: doc.zoomedItem ?? doc.rootItem, selection: $selectedNode)
+            }
+        }
+        .toolbar { /* toolbar items */ }
+    }
+}
+
+// TreeMap rendered with Canvas for performance
+struct TreeMapView: View {
+    let root: FileNode
+    @Binding var selection: FileNode?
+    @State private var hoveredNode: FileNode?
+
+    var body: some View {
+        GeometryReader { geometry in
+            let rects = squarify(nodes: root.children, in: CGRect(origin: .zero, size: geometry.size), colorProvider: colorForNode)
+
+            Canvas { context, size in
+                for rect in rects {
+                    let path = Path(roundedRect: rect.rect.insetBy(dx: 1, dy: 1), cornerRadius: 2)
+                    context.fill(path, with: .color(rect.color))
+
+                    if rect.node === selection {
+                        context.stroke(path, with: .color(.accentColor), lineWidth: 2)
+                    }
+                }
+            }
+            .gesture(
+                SpatialTapGesture()
+                    .onEnded { value in
+                        selection = rects.first { $0.rect.contains(value.location) }?.node
+                    }
+            )
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    hoveredNode = rects.first { $0.rect.contains(location) }?.node
+                case .ended:
+                    hoveredNode = nil
+                }
+            }
+        }
+    }
+}
+```
+
+### File Kind Colors (Port from Existing)
+
+```swift
+// Port FileTypeColors.m color assignments
+struct FileKindColors {
+    static let shared = FileKindColors()
+
+    private var assignedColors: [String: Color] = [:]
+    private var nextColorIndex = 0
+
+    // Predefined palette similar to original
+    private let palette: [Color] = [
+        Color(red: 0.4, green: 0.6, blue: 1.0),   // Blue
+        Color(red: 1.0, green: 0.6, blue: 0.4),   // Orange
+        Color(red: 0.6, green: 0.8, blue: 0.4),   // Green
+        Color(red: 0.9, green: 0.5, blue: 0.7),   // Pink
+        Color(red: 0.7, green: 0.5, blue: 0.9),   // Purple
+        Color(red: 0.9, green: 0.8, blue: 0.4),   // Yellow
+        Color(red: 0.5, green: 0.8, blue: 0.8),   // Cyan
+        Color(red: 0.8, green: 0.6, blue: 0.5),   // Brown
+        // ... more colors
+    ]
+
+    mutating func color(for kindName: String) -> Color {
+        if let existing = assignedColors[kindName] {
+            return existing
+        }
+        let color = palette[nextColorIndex % palette.count]
+        assignedColors[kindName] = color
+        nextColorIndex += 1
+        return color
+    }
+}
+```
+
+### Migration Checklist
+
+**Completed (Phase 1-2):**
+- [x] TreeMapView framework modernized (ARC + Universal Binary)
+- [x] OmniFrameworks dependency removed
+- [x] App builds and runs on Apple Silicon
+- [x] NSPrincipalClass fixed in Info.plist
+
+**Remaining for Full Modernization:**
+- [ ] Enable ARC for main app (Phase 3)
+- [ ] Replace deprecated APIs (Phase 4) - many NSBeginAlertSheet, loadNibNamed, etc.
+- [ ] Update deployment target to macOS 11.0+
+- [ ] Replace Carbon APIs (FSPathMakeRef, FSGetCatalogInfo)
+
+**For Swift Rewrite:**
+- [ ] Create Swift Package for core model (FileNode, FileScanner)
+- [ ] Implement squarified treemap algorithm in Swift
+- [ ] Create SwiftUI views (NavigationSplitView structure)
+- [ ] Port file kind color assignment
+- [ ] Implement Settings with @AppStorage
+- [ ] Handle Full Disk Access permission
+
+### Performance Considerations
+
+1. **Scanning**: Use async/await with Task for cancelation support
+2. **TreeMap Rendering**: Use Canvas for hardware-accelerated drawing
+3. **Large Directories**: Consider lazy loading children, pagination in outline view
+4. **Memory**: FileNode should use weak parent reference to avoid retain cycles
+
+---
+
 ## References
 
 - [UTType Documentation](https://developer.apple.com/documentation/uniformtypeidentifiers/uttype-swift.struct)
