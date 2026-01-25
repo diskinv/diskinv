@@ -1,0 +1,7 @@
+//
+// Prefix header for all source files of the 'TreeMapView' target in the 'TreeMapView' project.
+//
+
+#ifdef __OBJC__
+    #import <Cocoa/Cocoa.h>
+#endif

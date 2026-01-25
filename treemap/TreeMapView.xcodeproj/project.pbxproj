@@ -1,0 +1,416 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 48;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		8DC2EF530486A6940098B216 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 089C1666FE841158C02AAC07 /* InfoPlist.strings */; };
+		8DC2EF570486A6940098B216 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1058C7B1FEA5585E11CA2CBB /* Cocoa.framework */; };
+		FC08297422136FC400728CFE /* NSView-BackingCoordsHelpers.h in Headers */ = {isa = PBXBuildFile; fileRef = FC08297222136FC400728CFE /* NSView-BackingCoordsHelpers.h */; };
+		FC08297522136FC400728CFE /* NSView-BackingCoordsHelpers.m in Sources */ = {isa = PBXBuildFile; fileRef = FC08297322136FC400728CFE /* NSView-BackingCoordsHelpers.m */; };
+		FCA4C9A8075CB9E60064125F /* ZoomInfo.h in Headers */ = {isa = PBXBuildFile; fileRef = FCA4C9A6075CB9E60064125F /* ZoomInfo.h */; };
+		FCA4C9A9075CB9E60064125F /* ZoomInfo.m in Sources */ = {isa = PBXBuildFile; fileRef = FCA4C9A7075CB9E60064125F /* ZoomInfo.m */; };
+		FCB5717907269F7F00AE06A1 /* release notes.txt in Resources */ = {isa = PBXBuildFile; fileRef = FCB5717807269F7F00AE06A1 /* release notes.txt */; };
+		FCB5721E0726D85100AE06A1 /* NSBitmapImageRep-CreationExtensions.h in Headers */ = {isa = PBXBuildFile; fileRef = FCB5721C0726D85100AE06A1 /* NSBitmapImageRep-CreationExtensions.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		FCB5721F0726D85100AE06A1 /* NSBitmapImageRep-CreationExtensions.m in Sources */ = {isa = PBXBuildFile; fileRef = FCB5721D0726D85100AE06A1 /* NSBitmapImageRep-CreationExtensions.m */; };
+		FCE43ABD070B54E200E18050 /* TMVCushionRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = FCE43AB7070B54E200E18050 /* TMVCushionRenderer.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		FCE43ABE070B54E200E18050 /* TMVCushionRenderer.m in Sources */ = {isa = PBXBuildFile; fileRef = FCE43AB8070B54E200E18050 /* TMVCushionRenderer.m */; };
+		FCE43ABF070B54E200E18050 /* TMVItem.h in Headers */ = {isa = PBXBuildFile; fileRef = FCE43AB9070B54E200E18050 /* TMVItem.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		FCE43AC0070B54E200E18050 /* TMVItem.m in Sources */ = {isa = PBXBuildFile; fileRef = FCE43ABA070B54E200E18050 /* TMVItem.m */; };
+		FCE43AC1070B54E200E18050 /* TreeMapView.h in Headers */ = {isa = PBXBuildFile; fileRef = FCE43ABB070B54E200E18050 /* TreeMapView.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		FCE43AC2070B54E200E18050 /* TreeMapView.m in Sources */ = {isa = PBXBuildFile; fileRef = FCE43ABC070B54E200E18050 /* TreeMapView.m */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0867D69BFE84028FC02AAC07 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = /System/Library/Frameworks/Foundation.framework; sourceTree = "<absolute>"; };
+		0867D6A5FE840307C02AAC07 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = /System/Library/Frameworks/AppKit.framework; sourceTree = "<absolute>"; };
+		089C1667FE841158C02AAC07 /* English */ = {isa = PBXFileReference; fileEncoding = 10; lastKnownFileType = text.plist.strings; name = English; path = English.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		1058C7B1FEA5585E11CA2CBB /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = /System/Library/Frameworks/Cocoa.framework; sourceTree = "<absolute>"; };
+		32DBCF5E0370ADEE00C91783 /* TreeMapView_Prefix.pch */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TreeMapView_Prefix.pch; sourceTree = "<group>"; };
+		8DC2EF5A0486A6940098B216 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		8DC2EF5B0486A6940098B216 /* TreeMapView.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = TreeMapView.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		FC08297222136FC400728CFE /* NSView-BackingCoordsHelpers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSView-BackingCoordsHelpers.h"; sourceTree = "<group>"; };
+		FC08297322136FC400728CFE /* NSView-BackingCoordsHelpers.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSView-BackingCoordsHelpers.m"; sourceTree = "<group>"; };
+		FC2D7D7F21FE4ABC004D0614 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		FC42B8702202405A0080570A /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		FCA1D0C82205FF2D004E9468 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		FCA4C9A6075CB9E60064125F /* ZoomInfo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ZoomInfo.h; sourceTree = "<group>"; };
+		FCA4C9A7075CB9E60064125F /* ZoomInfo.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ZoomInfo.m; sourceTree = "<group>"; };
+		FCB5717807269F7F00AE06A1 /* release notes.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = "release notes.txt"; sourceTree = "<group>"; };
+		FCB5721C0726D85100AE06A1 /* NSBitmapImageRep-CreationExtensions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSBitmapImageRep-CreationExtensions.h"; sourceTree = "<group>"; };
+		FCB5721D0726D85100AE06A1 /* NSBitmapImageRep-CreationExtensions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NSBitmapImageRep-CreationExtensions.m"; sourceTree = "<group>"; };
+		FCE43AB7070B54E200E18050 /* TMVCushionRenderer.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = TMVCushionRenderer.h; sourceTree = SOURCE_ROOT; };
+		FCE43AB8070B54E200E18050 /* TMVCushionRenderer.m */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.objc; path = TMVCushionRenderer.m; sourceTree = SOURCE_ROOT; };
+		FCE43AB9070B54E200E18050 /* TMVItem.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = TMVItem.h; sourceTree = SOURCE_ROOT; };
+		FCE43ABA070B54E200E18050 /* TMVItem.m */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.objc; path = TMVItem.m; sourceTree = SOURCE_ROOT; };
+		FCE43ABB070B54E200E18050 /* TreeMapView.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = TreeMapView.h; sourceTree = SOURCE_ROOT; };
+		FCE43ABC070B54E200E18050 /* TreeMapView.m */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.objc; path = TreeMapView.m; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		8DC2EF560486A6940098B216 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8DC2EF570486A6940098B216 /* Cocoa.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		034768DFFF38A50411DB9C8B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8DC2EF5B0486A6940098B216 /* TreeMapView.framework */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		0867D691FE84028FC02AAC07 /* TreeMapView */ = {
+			isa = PBXGroup;
+			children = (
+				FCB5717507269F5A00AE06A1 /* Documentation */,
+				08FB77AEFE84172EC02AAC07 /* Classes */,
+				32C88DFF0371C24200C91783 /* Other Sources */,
+				089C1665FE841158C02AAC07 /* Resources */,
+				0867D69AFE84028FC02AAC07 /* External Frameworks and Libraries */,
+				034768DFFF38A50411DB9C8B /* Products */,
+			);
+			name = TreeMapView;
+			sourceTree = "<group>";
+		};
+		0867D69AFE84028FC02AAC07 /* External Frameworks and Libraries */ = {
+			isa = PBXGroup;
+			children = (
+				1058C7B0FEA5585E11CA2CBB /* Linked Frameworks */,
+				1058C7B2FEA5585E11CA2CBB /* Other Frameworks */,
+			);
+			name = "External Frameworks and Libraries";
+			sourceTree = "<group>";
+		};
+		089C1665FE841158C02AAC07 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				8DC2EF5A0486A6940098B216 /* Info.plist */,
+				089C1666FE841158C02AAC07 /* InfoPlist.strings */,
+			);
+			name = Resources;
+			sourceTree = "<group>";
+		};
+		08FB77AEFE84172EC02AAC07 /* Classes */ = {
+			isa = PBXGroup;
+			children = (
+				FCA4C9A6075CB9E60064125F /* ZoomInfo.h */,
+				FCA4C9A7075CB9E60064125F /* ZoomInfo.m */,
+				FCB5721C0726D85100AE06A1 /* NSBitmapImageRep-CreationExtensions.h */,
+				FCB5721D0726D85100AE06A1 /* NSBitmapImageRep-CreationExtensions.m */,
+				FC08297222136FC400728CFE /* NSView-BackingCoordsHelpers.h */,
+				FC08297322136FC400728CFE /* NSView-BackingCoordsHelpers.m */,
+				FCE43AB7070B54E200E18050 /* TMVCushionRenderer.h */,
+				FCE43AB8070B54E200E18050 /* TMVCushionRenderer.m */,
+				FCE43AB9070B54E200E18050 /* TMVItem.h */,
+				FCE43ABA070B54E200E18050 /* TMVItem.m */,
+				FCE43ABB070B54E200E18050 /* TreeMapView.h */,
+				FCE43ABC070B54E200E18050 /* TreeMapView.m */,
+			);
+			name = Classes;
+			sourceTree = "<group>";
+		};
+		1058C7B0FEA5585E11CA2CBB /* Linked Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				1058C7B1FEA5585E11CA2CBB /* Cocoa.framework */,
+			);
+			name = "Linked Frameworks";
+			sourceTree = "<group>";
+		};
+		1058C7B2FEA5585E11CA2CBB /* Other Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0867D69BFE84028FC02AAC07 /* Foundation.framework */,
+				0867D6A5FE840307C02AAC07 /* AppKit.framework */,
+			);
+			name = "Other Frameworks";
+			sourceTree = "<group>";
+		};
+		32C88DFF0371C24200C91783 /* Other Sources */ = {
+			isa = PBXGroup;
+			children = (
+				32DBCF5E0370ADEE00C91783 /* TreeMapView_Prefix.pch */,
+			);
+			name = "Other Sources";
+			sourceTree = "<group>";
+		};
+		FCB5717507269F5A00AE06A1 /* Documentation */ = {
+			isa = PBXGroup;
+			children = (
+				FCB5717807269F7F00AE06A1 /* release notes.txt */,
+			);
+			name = Documentation;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXHeadersBuildPhase section */
+		8DC2EF500486A6940098B216 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FCE43ABD070B54E200E18050 /* TMVCushionRenderer.h in Headers */,
+				FCE43ABF070B54E200E18050 /* TMVItem.h in Headers */,
+				FCE43AC1070B54E200E18050 /* TreeMapView.h in Headers */,
+				FCB5721E0726D85100AE06A1 /* NSBitmapImageRep-CreationExtensions.h in Headers */,
+				FC08297422136FC400728CFE /* NSView-BackingCoordsHelpers.h in Headers */,
+				FCA4C9A8075CB9E60064125F /* ZoomInfo.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
+
+/* Begin PBXNativeTarget section */
+		8DC2EF4F0486A6940098B216 /* TreeMapView */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FC45808508F08C3200B5E25D /* Build configuration list for PBXNativeTarget "TreeMapView" */;
+			buildPhases = (
+				8DC2EF500486A6940098B216 /* Headers */,
+				8DC2EF520486A6940098B216 /* Resources */,
+				8DC2EF540486A6940098B216 /* Sources */,
+				8DC2EF560486A6940098B216 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TreeMapView;
+			productInstallPath = "$(HOME)/Library/Frameworks";
+			productName = TreeMapView;
+			productReference = 8DC2EF5B0486A6940098B216 /* TreeMapView.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0867D690FE84028FC02AAC07 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1010;
+			};
+			buildConfigurationList = FC45808908F08C3200B5E25D /* Build configuration list for PBXProject "TreeMapView" */;
+			compatibilityVersion = "Xcode 8.0";
+			developmentRegion = English;
+			hasScannedForEncodings = 1;
+			knownRegions = (
+				English,
+				en,
+				de,
+				es,
+				fr,
+			);
+			mainGroup = 0867D691FE84028FC02AAC07 /* TreeMapView */;
+			productRefGroup = 034768DFFF38A50411DB9C8B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8DC2EF4F0486A6940098B216 /* TreeMapView */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		8DC2EF520486A6940098B216 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8DC2EF530486A6940098B216 /* InfoPlist.strings in Resources */,
+				FCB5717907269F7F00AE06A1 /* release notes.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		8DC2EF540486A6940098B216 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FCE43ABE070B54E200E18050 /* TMVCushionRenderer.m in Sources */,
+				FC08297522136FC400728CFE /* NSView-BackingCoordsHelpers.m in Sources */,
+				FCE43AC0070B54E200E18050 /* TMVItem.m in Sources */,
+				FCE43AC2070B54E200E18050 /* TreeMapView.m in Sources */,
+				FCB5721F0726D85100AE06A1 /* NSBitmapImageRep-CreationExtensions.m in Sources */,
+				FCA4C9A9075CB9E60064125F /* ZoomInfo.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		089C1666FE841158C02AAC07 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				089C1667FE841158C02AAC07 /* English */,
+				FC2D7D7F21FE4ABC004D0614 /* de */,
+				FC42B8702202405A0080570A /* es */,
+				FCA1D0C82205FF2D004E9468 /* fr */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		FC45808608F08C3200B5E25D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				COPY_PHASE_STRIP = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				FRAMEWORK_VERSION = A;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = TreeMapView_Prefix.pch;
+				GCC_VERSION = com.apple.compilers.llvm.clang.1_0;
+				INFOPLIST_FILE = Info.plist;
+				INSTALL_PATH = "@executable_path/../Frameworks";
+				MACH_O_TYPE = mh_dylib;
+				MACOSX_DEPLOYMENT_TARGET = 10.7;
+				OTHER_CFLAGS = "";
+				PRODUCT_BUNDLE_IDENTIFIER = com.derlien.TreeMapView;
+				PRODUCT_NAME = TreeMapView;
+				WRAPPER_EXTENSION = framework;
+			};
+			name = Debug;
+		};
+		FC45808708F08C3200B5E25D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				COPY_PHASE_STRIP = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				ENABLE_NS_ASSERTIONS = NO;
+				FRAMEWORK_VERSION = A;
+				GCC_OPTIMIZATION_LEVEL = 3;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = TreeMapView_Prefix.pch;
+				GCC_PREPROCESSOR_DEFINITIONS = "";
+				GCC_VERSION = com.apple.compilers.llvm.clang.1_0;
+				INFOPLIST_FILE = Info.plist;
+				INSTALL_PATH = "@executable_path/../Frameworks";
+				MACH_O_TYPE = mh_dylib;
+				MACOSX_DEPLOYMENT_TARGET = 10.7;
+				OTHER_CFLAGS = "";
+				PRODUCT_BUNDLE_IDENTIFIER = com.derlien.TreeMapView;
+				PRODUCT_NAME = TreeMapView;
+				WRAPPER_EXTENSION = framework;
+			};
+			name = Release;
+		};
+		FC45808A08F08C3200B5E25D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.7;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		FC45808B08F08C3200B5E25D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_MISSING_PROTOTYPES = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_CHECK_SWITCH_STATEMENTS = YES;
+				GCC_WARN_HIDDEN_VIRTUAL_FUNCTIONS = NO;
+				GCC_WARN_MISSING_PARENTHESES = YES;
+				GCC_WARN_NON_VIRTUAL_DESTRUCTOR = YES;
+				GCC_WARN_SHADOW = YES;
+				GCC_WARN_SIGN_COMPARE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_LABEL = YES;
+				GCC_WARN_UNUSED_VALUE = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.7;
+				ONLY_ACTIVE_ARCH = NO;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		FC45808508F08C3200B5E25D /* Build configuration list for PBXNativeTarget "TreeMapView" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FC45808608F08C3200B5E25D /* Debug */,
+				FC45808708F08C3200B5E25D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		FC45808908F08C3200B5E25D /* Build configuration list for PBXProject "TreeMapView" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FC45808A08F08C3200B5E25D /* Debug */,
+				FC45808B08F08C3200B5E25D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 0867D690FE84028FC02AAC07 /* Project object */;
+}
