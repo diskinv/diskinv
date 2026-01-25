@@ -12,7 +12,9 @@
       "Bash(pgrep:*)",
       "Bash(chmod:*)",
       "Bash(./BuildRelease.sh:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(pip3 install:*)",
+      "Bash(python3:*)"
     ]
   }
 }
