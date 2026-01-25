@@ -46,14 +46,14 @@ static NSMutableDictionary *_cushionTextAttributes;
 + (void) initialize
 {
     if ( _parentGridColor == nil )
-        _parentGridColor = [[NSColor textColor] retain];
+        _parentGridColor = [NSColor textColor];
     if ( _leafGridColor == nil )
-        _leafGridColor = [[NSColor disabledControlTextColor] retain];
+        _leafGridColor = [NSColor disabledControlTextColor];
     if ( _highlightGridColor == nil )
-        _highlightGridColor = [[NSColor yellowColor] retain];
+        _highlightGridColor = [NSColor yellowColor];
     if ( _nameColor == nil )
-        _nameColor = [[NSColor disabledControlTextColor] retain];
-	
+        _nameColor = [NSColor disabledControlTextColor];
+
     if ( _gridTextAttributes == nil )
         _gridTextAttributes = [[NSMutableDictionary alloc] init];
     if ( _cushionTextAttributes == nil )
@@ -78,26 +78,17 @@ static NSMutableDictionary *_cushionTextAttributes;
     return self;
 }
 
-- (void) dealloc
-{
-    [_childRenderers release];
-    [_cushionRenderer release];
-
-    [super dealloc];
-}
-
 - (void) refreshWithItem: (id) item
 {
     _item = item;
 	_rect = NSZeroRect;
-	
+
 	[_cushionRenderer setRect: NSZeroRect];
-	
+
     if ( ![self isLeaf] )
 		[self createChildRenderers];
 	else
 	{
-		[_childRenderers release];
 		_childRenderers = nil;
 	}
 }
@@ -141,7 +132,7 @@ static NSMutableDictionary *_cushionTextAttributes;
         
         [_leafGridColor set];
 
-        NSFrameRectWithWidthUsingOperation(rectPoints, 1, NSCompositeCopy );
+        NSFrameRectWithWidthUsingOperation(rectPoints, 1, NSCompositingOperationCopy );
 
 /*        if ( NSWidth(_rect) > 60 && NSHeight(_rect) > 20 )
         {
@@ -303,8 +294,6 @@ static NSMutableDictionary *_cushionTextAttributes;
 
 - (void) layoutChilds
 {
-//	NSAutoreleasePool *localAutorelasePool = [[NSAutoreleasePool alloc] init];
-	
     NSMutableArray *rows = [[NSMutableArray alloc] init];   //doubles, fraction of total height for each row
     NSMutableArray *childsPerRow = [[NSMutableArray alloc] init]; //ints, number of childs per row
     NSMutableArray *childWidths = [[NSMutableArray alloc] initWithCapacity: [_childRenderers count]]; //doubles, fraction of total width for each child
@@ -316,12 +305,12 @@ static NSMutableDictionary *_cushionTextAttributes;
                   childWidths: childWidths
                  rowsAreHoriz: &horizontalRows];
 
-    const int parentWidth = (int) /*roundf*/( horizontalRows ? NSWidth(_rect) : NSHeight(_rect) );
-    const int parentHeight = (int) /*roundf*/( horizontalRows ? NSHeight(_rect) : NSWidth(_rect) );
+    const int parentWidth = (int) ( horizontalRows ? NSWidth(_rect) : NSHeight(_rect) );
+    const int parentHeight = (int) ( horizontalRows ? NSHeight(_rect) : NSWidth(_rect) );
 
-    const int parentBottom = (int) /*roundf*/( horizontalRows ? NSMaxY(_rect) : NSMaxX(_rect) );
-    const int parentRight = (int) /*roundf*/( horizontalRows ? NSMaxX(_rect) : NSMaxY(_rect) );
-    const int parentLeft = (int) /*roundf*/( horizontalRows ? NSMinX(_rect) : NSMinY(_rect) );
+    const int parentBottom = (int) ( horizontalRows ? NSMaxY(_rect) : NSMaxX(_rect) );
+    const int parentRight = (int) ( horizontalRows ? NSMaxX(_rect) : NSMaxY(_rect) );
+    const int parentLeft = (int) ( horizontalRows ? NSMinX(_rect) : NSMinY(_rect) );
 
     unsigned childIndex = 0;
     unsigned row = 0;
@@ -369,12 +358,6 @@ static NSMutableDictionary *_cushionTextAttributes;
 
         top = bottom;
     }
-
-    [rows release];
-    [childsPerRow release];
-    [childWidths release];
-	
-//	[localAutorelasePool release];
 }
 
 - (void) arrangeChildsOnRows: (NSMutableArray*) rows
@@ -384,19 +367,13 @@ static NSMutableDictionary *_cushionTextAttributes;
 {
     NSUInteger childCount = [_childRenderers count];
     NSUInteger i;
-	NSNumber *num = nil;
-	
+
     if ( [self weight] == 0 )
     {
-		num = [[NSNumber alloc] initWithUnsignedInt: 1];
-        [rows addObject: num/*[NSNumber numberWithUnsignedInt: 1]*/];
-		[num release];
-		
-		num = [[NSNumber alloc] initWithUnsignedInteger: childCount];
-        [childsPerRow addObject: num/*[NSNumber numberWithUnsignedInt: childCount]*/];
-		[num release];
+        [rows addObject: @1U];
+        [childsPerRow addObject: @(childCount)];
 
-        id standardWidth = [NSNumber numberWithDouble: 1.0/childCount];
+        id standardWidth = @(1.0/childCount);
         for ( i = 0; i < childCount; i++ )
             [childWidths addObject: standardWidth];
 
@@ -426,13 +403,8 @@ static NSMutableDictionary *_cushionTextAttributes;
                                        childsUsed: &childsUsed
                                       childWidths: childWidths];
 
-			num = [[NSNumber alloc] initWithDouble: rowHeight];
-            [rows addObject: num/*[NSNumber numberWithDouble: rowHeight]*/];
-			[num release];
-			
-			num = [[NSNumber alloc] initWithUnsignedInteger: childsUsed];
-            [childsPerRow addObject: num/*[NSNumber numberWithUnsignedInt: childsUsed]*/];
-			[num release];
+            [rows addObject: @(rowHeight)];
+            [childsPerRow addObject: @(childsUsed)];
 
             i += childsUsed;
         }
@@ -507,9 +479,7 @@ static NSMutableDictionary *_cushionTextAttributes;
         double cw = childSize / rowSize;
         //NSAssert(cw >= 0);
 
-		NSNumber *num = [[NSNumber alloc] initWithDouble: cw];
-        [childWidths addObject: num/*[NSNumber numberWithDouble: cw]*/];
-		[num release];
+        [childWidths addObject: @(cw)];
     }
 
     return rowHeight;
@@ -551,8 +521,6 @@ static NSMutableDictionary *_cushionTextAttributes;
 															 treeMapView: _view];
 			
 			[_childRenderers addObject: childRenderer];
-			
-			[childRenderer release];
 		}
     }
 }

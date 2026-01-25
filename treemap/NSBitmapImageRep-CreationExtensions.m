@@ -19,7 +19,6 @@
     
     NSBitmapImageRep *imgRep = [[NSBitmapImageRep alloc] initRGBBitmapWithWidth: sizePixel.width
                                                                          height: sizePixel.height];
-    [imgRep autorelease];
     
     // Setting the user size communicates the dpi
     [imgRep setSize:sizePoints];
@@ -51,7 +50,7 @@
                           samplesPerPixel: 3       // Number of components (R, G, B, no alpha)
                                  hasAlpha: NO
                                  isPlanar: NO
-                           colorSpaceName: NSCalibratedRGBColorSpace
+                           colorSpaceName: NSDeviceRGBColorSpace
                               bytesPerRow: 0       // 0 means: Let the class figure it out
                              bitsPerPixel: 0];     // 0 means: Let the class figure it out
 }
@@ -65,7 +64,7 @@
 	
     [image addRepresentation: self];
 	
-	return [image autorelease];
+	return image;
 }
 
 @end

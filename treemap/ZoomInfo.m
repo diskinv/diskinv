@@ -19,8 +19,8 @@
 			selector: (SEL) selector
 {
 	self = [super init];
-	
-	_image = [image retain];
+
+	_image = image;
 	
 	_delegate = delegate;
 	_delegateSelector = selector;
@@ -80,14 +80,10 @@
 
 - (void) dealloc
 {
-	[_image release];
-	
 	if ( _timer != nil && [_timer isValid] )
 		[_timer invalidate]; //timer will be released by run loop
-	
+
 	_timer = nil;
-	
-	[super dealloc];
 }
 
 
@@ -142,7 +138,7 @@
 	
 	[_image drawInRect: _rect
 			  fromRect: NSMakeRect( 0, 0, imageSize.width, imageSize.height )
-			 operation: NSCompositeCopy
+			 operation: NSCompositingOperationCopy
               fraction: 1/*requestedAlpha*/
         respectFlipped: YES
                  hints: nil];

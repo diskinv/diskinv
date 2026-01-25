@@ -34,7 +34,8 @@ NSString *TMVTouchedItem = @"TreeMapViewTouchedItem"; //key for touched item in 
 
 - (id)initWithFrame:(NSRect)frameRect
 {
-    [super initWithFrame:frameRect];
+    self = [super initWithFrame:frameRect];
+    if (self == nil) return nil;
 	
     if ([[self superclass] instancesRespondToSelector:@selector(awakeFromNib)])
         [super awakeFromNib];
@@ -66,10 +67,10 @@ NSString *TMVTouchedItem = @"TreeMapViewTouchedItem"; //key for touched item in 
 
 - (void) awakeFromNib
 {
-    NSTrackingArea *trackingArea = [[[NSTrackingArea alloc] initWithRect: [self bounds]
+    NSTrackingArea *trackingArea = [[NSTrackingArea alloc] initWithRect: [self bounds]
                                                                  options: NSTrackingMouseMoved | NSTrackingInVisibleRect | NSTrackingActiveInActiveApp
                                                                    owner: self
-                                                                userInfo: nil] autorelease];
+                                                                userInfo: nil];
     [self addTrackingArea:trackingArea];
     
     //we will defer the creation fo the renderers till "reloadData" is called explicitly
@@ -87,10 +88,7 @@ NSString *TMVTouchedItem = @"TreeMapViewTouchedItem"; //key for touched item in 
     if ( delegate != nil )
         [nc removeObserver: delegate name:nil object:self];
 
-    [_rootItemRenderer release];
-    [self deallocContentCache]; 
-
-    [super dealloc];
+    [self deallocContentCache];
 }
 
 - (id) delegate
@@ -165,7 +163,7 @@ NSString *TMVTouchedItem = @"TreeMapViewTouchedItem"; //key for touched item in 
             // draw image slightly dimmed
             [image drawInRect: [self bounds]
                      fromRect: NSMakeRect( 0, 0, imageSize.width, imageSize.height )
-                    operation: NSCompositeCopy
+                    operation: NSCompositingOperationCopy
                      fraction: 0.6/*requestedAlpha*/
                respectFlipped: YES
                         hints: nil];
@@ -202,7 +200,7 @@ NSString *TMVTouchedItem = @"TreeMapViewTouchedItem"; //key for touched item in 
         
         [image drawInRect: rect
                  fromRect: rect
-                operation: NSCompositeCopy
+                operation: NSCompositingOperationCopy
                  fraction: 1/*requestedAlpha*/
            respectFlipped: YES
                     hints: nil];
@@ -456,7 +454,7 @@ NSString *TMVTouchedItem = @"TreeMapViewTouchedItem"; //key for touched item in 
 		[_rootItemRenderer drawCushionInBitmap: oldImageRep];
 	}
 	else
-        oldImageRep = [[_cachedContent retain] autorelease];
+        oldImageRep = _cachedContent;
 	
 	NSRect zoomStartRect = [renderer rect]; 
 	
@@ -618,9 +616,9 @@ NSString *TMVTouchedItem = @"TreeMapViewTouchedItem"; //key for touched item in 
 - (void) benchmarkLayoutCalculationWithImageSize: (NSSize) size count: (unsigned) count
 {
 	TMVItem *tmvItem = [[TMVItem alloc] initWithDataSource: dataSource delegate: delegate renderedItem: nil treeMapView: self];
-	
+
 	count /= 2;
-	
+
 	NSSize size2 = NSMakeSize( size.width * 2, size.height *2 );
 
 	for ( ; count > 0; count-- )
@@ -628,26 +626,21 @@ NSString *TMVTouchedItem = @"TreeMapViewTouchedItem"; //key for touched item in 
 		[tmvItem calcLayout: NSMakeRect(0, 0, size.width, size.height)];
 		[tmvItem calcLayout: NSMakeRect(0, 0, size2.width, size2.height)];
 	}
-	
-	[tmvItem release];
 }
 
 - (void) benchmarkRenderingWithImageSize: (NSSize) size count: (unsigned) count
 {
-	//creates a Bitmap with 24 bit color depth and no alpha component							 
-    NSBitmapImageRep *bitmap = [[ NSBitmapImageRep alloc]
+	//creates a Bitmap with 24 bit color depth and no alpha component
+    NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc]
 								initRGBBitmapWithWidth: size.width height: size.height];
-	
+
 	TMVItem *tmvItem = [[TMVItem alloc] initWithDataSource: dataSource delegate: delegate renderedItem: nil treeMapView: self];
 	[tmvItem calcLayout: NSMakeRect(0, 0, size.width, size.height)];
-	
+
 	for ( ; count > 0; count-- )
 	{
 		[tmvItem drawCushionInBitmap: bitmap];
 	}
-	
-	[tmvItem release];
-	[bitmap release];
 }
 
 @end
@@ -671,18 +664,12 @@ NSString *TMVTouchedItem = @"TreeMapViewTouchedItem"; //key for touched item in 
 
 - (void) allocContentCache
 {
-    [_cachedContent release];
-
-    _cachedContent = [[NSBitmapImageRep imageRepCompatibleWithView: self] retain];
+    _cachedContent = [NSBitmapImageRep imageRepCompatibleWithView: self];
 }
 
 - (void) deallocContentCache
 {
-    if ( _cachedContent != nil )
-    {
-        [_cachedContent release];
-        _cachedContent = nil;
-    }
+    _cachedContent = nil;
 }
 
 - (TMVItem*) findTMVItemByPathToDataItem: (NSArray*) path
@@ -745,7 +732,6 @@ NSString *TMVTouchedItem = @"TreeMapViewTouchedItem"; //key for touched item in 
 		
 	if ( [zoomInfo hasFinished] )
 	{
-		[_zoomer release];
 		_zoomer = nil;
 		
 		[self setNeedsDisplay: YES];

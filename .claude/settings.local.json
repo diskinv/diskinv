@@ -6,7 +6,8 @@
       "Bash(find:*)",
       "Bash(lipo -info:*)",
       "WebSearch",
-      "WebFetch(domain:gitlab.com)"
+      "WebFetch(domain:gitlab.com)",
+      "Bash(xcodebuild:*)"
     ]
   }
 }
