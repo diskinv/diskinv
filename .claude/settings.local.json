@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(lipo -info:*)",
+      "WebSearch",
+      "WebFetch(domain:gitlab.com)",
+      "Bash(xcodebuild:*)",
+      "Bash(open:*)",
+      "Bash(pgrep:*)",
+      "Bash(chmod:*)",
+      "Bash(./BuildRelease.sh:*)"
+    ]
+  }
+}

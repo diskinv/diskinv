@@ -1,0 +1,14 @@
+/Users/mla/b/disk-inventory-x/DiskInventoryX/App/DiskInventoryXApp.swift
+/Users/mla/b/disk-inventory-x/DiskInventoryX/App/AppState.swift
+/Users/mla/b/disk-inventory-x/DiskInventoryX/Models/FileNode.swift
+/Users/mla/b/disk-inventory-x/DiskInventoryX/Models/FileKindStatistic.swift
+/Users/mla/b/disk-inventory-x/DiskInventoryX/Services/FileScanner.swift
+/Users/mla/b/disk-inventory-x/DiskInventoryX/Utilities/FileSizeFormatter.swift
+/Users/mla/b/disk-inventory-x/DiskInventoryX/Utilities/FileKindColorAssigner.swift
+/Users/mla/b/disk-inventory-x/DiskInventoryX/Views/ContentView.swift
+/Users/mla/b/disk-inventory-x/DiskInventoryX/Views/TreeMap/TreeMapView.swift
+/Users/mla/b/disk-inventory-x/DiskInventoryX/Views/TreeMap/TreeMapLayout.swift
+/Users/mla/b/disk-inventory-x/DiskInventoryX/Views/Sidebar/SidebarView.swift
+/Users/mla/b/disk-inventory-x/DiskInventoryX/Views/FileList/FileListView.swift
+/Users/mla/b/disk-inventory-x/DiskInventoryX/Views/Settings/SettingsView.swift
+/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/DerivedSources/GeneratedAssetSymbols.swift

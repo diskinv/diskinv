@@ -1,0 +1,81 @@
+{
+  "" : {
+    "const-values" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX-primary.swiftconstvalues",
+    "dependencies" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX-primary.d",
+    "diagnostics" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX-primary.dia",
+    "emit-module-dependencies" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX-primary-emit-module.dia",
+    "pch" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryX-primary.swiftdeps"
+  },
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/App/AppState.swift" : {
+    "index-unit-output-path" : "/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/AppState.o",
+    "llvm-bc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/AppState.bc",
+    "object" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/AppState.o"
+  },
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/App/DiskInventoryXApp.swift" : {
+    "index-unit-output-path" : "/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryXApp.o",
+    "llvm-bc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryXApp.bc",
+    "object" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/DiskInventoryXApp.o"
+  },
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/Models/FileKindStatistic.swift" : {
+    "index-unit-output-path" : "/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileKindStatistic.o",
+    "llvm-bc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileKindStatistic.bc",
+    "object" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileKindStatistic.o"
+  },
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/Models/FileNode.swift" : {
+    "index-unit-output-path" : "/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileNode.o",
+    "llvm-bc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileNode.bc",
+    "object" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileNode.o"
+  },
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/Services/FileScanner.swift" : {
+    "index-unit-output-path" : "/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileScanner.o",
+    "llvm-bc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileScanner.bc",
+    "object" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileScanner.o"
+  },
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/Utilities/FileKindColorAssigner.swift" : {
+    "index-unit-output-path" : "/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileKindColorAssigner.o",
+    "llvm-bc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileKindColorAssigner.bc",
+    "object" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileKindColorAssigner.o"
+  },
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/Utilities/FileSizeFormatter.swift" : {
+    "index-unit-output-path" : "/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileSizeFormatter.o",
+    "llvm-bc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileSizeFormatter.bc",
+    "object" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileSizeFormatter.o"
+  },
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/Views/ContentView.swift" : {
+    "index-unit-output-path" : "/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/ContentView.o",
+    "llvm-bc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/ContentView.bc",
+    "object" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/ContentView.o"
+  },
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/Views/FileList/FileListView.swift" : {
+    "index-unit-output-path" : "/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileListView.o",
+    "llvm-bc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileListView.bc",
+    "object" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/FileListView.o"
+  },
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/Views/Settings/SettingsView.swift" : {
+    "index-unit-output-path" : "/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/SettingsView.o",
+    "llvm-bc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/SettingsView.bc",
+    "object" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/SettingsView.o"
+  },
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/Views/Sidebar/SidebarView.swift" : {
+    "index-unit-output-path" : "/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/SidebarView.o",
+    "llvm-bc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/SidebarView.bc",
+    "object" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/SidebarView.o"
+  },
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/Views/TreeMap/TreeMapLayout.swift" : {
+    "index-unit-output-path" : "/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/TreeMapLayout.o",
+    "llvm-bc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/TreeMapLayout.bc",
+    "object" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/TreeMapLayout.o"
+  },
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/Views/TreeMap/TreeMapView.swift" : {
+    "index-unit-output-path" : "/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/TreeMapView.o",
+    "llvm-bc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/TreeMapView.bc",
+    "object" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/TreeMapView.o"
+  },
+  "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "index-unit-output-path" : "/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/mla/b/disk-inventory-x/DiskInventoryX/build/Build/Intermediates.noindex/DiskInventoryX.build/Release/DiskInventoryX.build/Objects-normal/arm64/GeneratedAssetSymbols.o"
+  }
+}

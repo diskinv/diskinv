@@ -1,0 +1,11 @@
+release notes
+=============
+
+1.0 (2004-06-12)
+----------------
+first public release
+
+1.1 (2019-02-28)
+----------------
+support for Retina displays (non-integral display points)
+treemap is rendered in full resolution on Retina displays
