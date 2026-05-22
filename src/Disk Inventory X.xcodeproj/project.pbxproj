@@ -780,7 +780,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"$BUILD_STYLE\" = \"Release\" ]\nthen\n\n# delete framework's header files\necho \"Deleting PrivateHeaders (files, dirs and links) from \\\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\\\"...\"\n\nfind \"$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH\" -type d -name Headers -print0 | xargs -0 rm -rf\nfind \"$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH\" -type d -name PrivateHeaders -print0 | xargs -0 rm -rf\n\n# delete ad-hoc code signature (I have no Apple ID yet)\n#echo \"deleting ad-hoc code signature from \\\"${TARGET_BUILD_DIR}\\\"...\"\n\n#find \"$TARGET_BUILD_DIR\" -type d -name _CodeSignature -print0 | xargs -0 rm -rf\n\n\nfi\n";
+			shellScript = "# Header stripping moved to BuildRelease.sh after the explicit re-sign,\n# because deleting framework Headers here invalidates the framework's code\n# signature before Xcode's own CodeSign step runs on the .app.\n:\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -1028,7 +1028,7 @@
 				MARKETING_VERSION = 1.1;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.derlien.DiskInventoryX;
-				PRODUCT_NAME = "Disk Inventory X";
+				PRODUCT_NAME = "Disk Inventory Xs";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 4.2;
@@ -1062,7 +1062,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.derlien.DiskInventoryX;
-				PRODUCT_NAME = "Disk Inventory X";
+				PRODUCT_NAME = "Disk Inventory Xs";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 4.2;
 				WRAPPER_EXTENSION = app;

@@ -584,7 +584,7 @@ NSString *OldItem = @"OldItem";
 		//(of course this could have changed since the loading, but what criteria should
 		//we use instead?)
 		NSAssert( _progressController == nil, @"progress panel wasn't destroyed after last use" );
-		unsigned progressPanelLimit = ![[item fileURL] isLocalVolume] ? 200 : 500;
+		NSUInteger progressPanelLimit = ![[item fileURL] isLocalVolume] ? 200 : 500;
 		if ( [item deepFileCountIncludingPackages: YES] > progressPanelLimit )
 		{
 			//NSWindow *window = [[[self windowControllers] objectAtIndex: 0] window];
@@ -1000,7 +1000,7 @@ NSString *OldItem = @"OldItem";
 	else if ( includingChilds )
 	{
 		//if the item is a folder, recurse through it's childs
-        unsigned i = [item childCount];
+        NSUInteger i = [item childCount];
         while ( i-- )
             [self addItemToFileKindStatistic: [item childAtIndex: i] includingChilds: YES];
     }
@@ -1021,9 +1021,9 @@ NSString *OldItem = @"OldItem";
 	else if ( includingChilds )
 	{
 		//if the item is a folder, recurse through it's childs
-        unsigned i = [item childCount];
+        NSUInteger i = [item childCount];
         while ( i-- )
-            [self removeItemFromFileKindStatistic: [item childAtIndex: i] includingChilds: YES];		
+            [self removeItemFromFileKindStatistic: [item childAtIndex: i] includingChilds: YES];
     }
 }
 
@@ -1052,7 +1052,7 @@ NSString *OldItem = @"OldItem";
 	if ( [self itemIsNode: item] )
 	{
 		//if the item is regarded as a folder, recurse through it's childs
-		unsigned i = [item childCount];
+		NSUInteger i = [item childCount];
 		while ( i-- )
 			[self removePackagesFromFileKindStatistic: [item childAtIndex: i]];
 	}
@@ -1083,7 +1083,7 @@ NSString *OldItem = @"OldItem";
 	if ( [self itemIsNode: item] )
 	{
 		//if the item is regarded as a folder, recurse through it's childs
-		unsigned i = [item childCount];
+		NSUInteger i = [item childCount];
 		while ( i-- )
 			[self addPackagesToFileKindStatistic: [item childAtIndex: i]];
 	}

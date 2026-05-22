@@ -38,7 +38,7 @@ SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 # Build with ad-hoc signing regardless of project settings; we re-sign with
 # the real identity at the end. This means BuildRelease.sh works on machines
 # that don't have the project's hard-coded development team certificate.
-XCODEBUILD_SIGN_FLAGS="CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES"
+XCODEBUILD_SIGN_FLAGS="CODE_SIGN_IDENTITY= CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO"
 
 # Build arm64-only. The "s" in "Disk Inventory Xs" is for Silicon.
 XCODEBUILD_ARCH_FLAGS="ARCHS=arm64 VALID_ARCHS=arm64 ONLY_ACTIVE_ARCH=NO"
@@ -79,15 +79,21 @@ xcodebuild \
 
 APP_BUILT_DIR="$(xcodebuild -project "$APP_PROJECT" -configuration Release -showBuildSettings 2>/dev/null \
     | awk -F' = ' '/^ *BUILT_PRODUCTS_DIR =/ {print $2; exit}')"
-APP_BUILT="$APP_BUILT_DIR/Disk Inventory X.app"
+APP_WRAPPER_NAME="$(xcodebuild -project "$APP_PROJECT" -configuration Release -showBuildSettings 2>/dev/null \
+    | awk -F' = ' '/^ *WRAPPER_NAME =/ {print $2; exit}')"
+APP_BUILT="$APP_BUILT_DIR/$APP_WRAPPER_NAME"
 
 if [ ! -d "$APP_BUILT" ]; then
     echo "error: app not found at $APP_BUILT" >&2
     exit 1
 fi
 
+echo "==> Stripping framework headers (release hygiene)"
+find "$APP_BUILT/Contents/Frameworks" -type d \( -name Headers -o -name PrivateHeaders \) -print0 | xargs -0 rm -rf
+
 echo "==> Re-signing with identity: $SIGN_IDENTITY"
-# Sign inner-out: framework first, then the .app.
+# Sign inner-out: framework first (after header strip invalidates the in-tree
+# signature), then the .app.
 codesign --force --options runtime \
     --sign "$SIGN_IDENTITY" \
     "$APP_BUILT/Contents/Frameworks/TreeMapView.framework"

@@ -17,7 +17,7 @@
 
 @interface FSItem(Utilities)
 
-- (unsigned) deepFileCountIncludingPackages: (BOOL) lookInPackages;	//count of files in all subdirectories
+- (NSUInteger) deepFileCountIncludingPackages: (BOOL) lookInPackages;	//count of files in all subdirectories
 
 //if allowAncestors == YES, these methods will return an existing ancestor of the child to find if child doesn't exist
 - (FSItem*) findItemByAbsolutePath: (NSString*) path allowAncestors: (BOOL) allowAncestors;

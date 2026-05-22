@@ -73,8 +73,8 @@ typedef enum
 - (NSImage*) iconWithSize: (unsigned) iconSize;
 
 - (NSEnumerator *) childEnumerator;
-- (FSItem*) childAtIndex: (unsigned) index;
-- (unsigned) childCount;
+- (FSItem*) childAtIndex: (NSUInteger) index;
+- (NSUInteger) childCount;
 
 - (void) removeChild: (FSItem*) child updateParent: (BOOL) updateParent; //child will be released!
 - (void) insertChild: (FSItem*) newChild updateParent: (BOOL) updateParent;

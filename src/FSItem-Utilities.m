@@ -18,13 +18,13 @@
 
 @implementation FSItem(Utilities)
 
-- (unsigned) deepFileCountIncludingPackages: (BOOL) lookInPackages
+- (NSUInteger) deepFileCountIncludingPackages: (BOOL) lookInPackages
 {
 	if ( [self isSpecialItem] )
 		return 0;
 	
-	unsigned i;
-	unsigned deepChildCount = 0;
+	NSUInteger i;
+	NSUInteger deepChildCount = 0;
 	for ( i = 0; i < [self childCount]; i++ )
 	{
 		FSItem *child = [self childAtIndex: i];

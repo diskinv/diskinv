@@ -112,7 +112,7 @@
 			return _freeSpaceItem;
 	}
 	else
-		return [fsItem childAtIndex: (unsigned)index];
+		return [fsItem childAtIndex: index];
 }
 
 - (BOOL) treeMapView: (TreeMapView*) view isNode: (id) item
@@ -126,7 +126,7 @@
 {
     FSItem *fsItem = ( item == nil ? [self rootItem] : item );
 
-    unsigned childCount = [fsItem childCount];
+    NSUInteger childCount = [fsItem childCount];
 	
 	//items representing other space and free space
 	if ( fsItem == [self rootItem] )
@@ -138,7 +138,7 @@
 			childCount ++;
 	}
 	
-	return childCount;
+	return (unsigned)childCount;
 }
 
 - (unsigned long long) treeMapView: (TreeMapView*) view weightByItem: (id) item

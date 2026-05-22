@@ -99,7 +99,7 @@
 
 #pragma mark --------NSOutlineView datasource-----------------
 
-- (id) outlineView: (NSOutlineView *) outlineView child: (int) index ofItem: (id) item
+- (id) outlineView: (NSOutlineView *) outlineView child: (NSInteger) index ofItem: (id) item
 {
 	FSItem *fsItem = (item == nil) ? [self rootItem] : item;
 
@@ -111,10 +111,10 @@
     return [[self document] itemIsNode: item];
 }
 
-- (int) outlineView: (NSOutlineView *) outlineView numberOfChildrenOfItem: (id) item
+- (NSInteger) outlineView: (NSOutlineView *) outlineView numberOfChildrenOfItem: (id) item
 {
 	FSItem *fsItem = (item == nil) ? [self rootItem] : item;
-	
+
     return [fsItem childCount];
 }
 
@@ -335,7 +335,7 @@ objectValueForTableColumn: (NSTableColumn *) tableColumn
         parent = [self rootItem];
 	}
 
-    unsigned i;
+    NSUInteger i;
     for ( i = 0; i < [parent childCount]; i++ )
     {
         FSItem *child = [parent childAtIndex: i];

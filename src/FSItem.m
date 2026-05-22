@@ -307,7 +307,7 @@ NSString* FSItemLoadingFailedException = @"FSItemLoadingFailedException";
 		return nil;
 }
 
-- (FSItem*) childAtIndex: (unsigned) index
+- (FSItem*) childAtIndex: (NSUInteger) index
 {
 	if ( ![self isSpecialItem] )
 		return [_childs objectAtIndex: index];
@@ -315,10 +315,10 @@ NSString* FSItemLoadingFailedException = @"FSItemLoadingFailedException";
 		return nil;
 }
 
-- (unsigned) childCount
+- (NSUInteger) childCount
 {
 	if ( ![self isSpecialItem] )
-		return (unsigned)[_childs count];
+		return [_childs count];
 	else
 		return 0;
 }
@@ -590,7 +590,7 @@ NSString* FSItemLoadingFailedException = @"FSItemLoadingFailedException";
     //let our childs do the same
 	if ( includingChildren && [self isFolder] )
 	{
-		unsigned i = [self childCount];
+		NSUInteger i = [self childCount];
 		while ( i-- )
 			[[self childAtIndex: i] setKindStringIncludingChildren: YES];
 	}
@@ -825,8 +825,10 @@ NSString* FSItemLoadingFailedException = @"FSItemLoadingFailedException";
 	{
 		if ([uti isEqualToString:(__bridge NSString*)kUTTypeFlatRTFD])
 		{
-			NSFileWrapper *tempRTFDData = [[[NSFileWrapper alloc] initWithURL:[NSURL fileURLWithPath:path] options:0 error:NULL] autorelease];
-			[pboard setData:[tempRTFDData serializedRepresentation] forType:NSRTFDPboardType];
+			NSError *error = nil;
+			NSFileWrapper *tempRTFDData = [[[NSFileWrapper alloc] initWithURL:[NSURL fileURLWithPath:path] options:0 error:&error] autorelease];
+			if ( tempRTFDData != nil )
+				[pboard setData:[tempRTFDData serializedRepresentation] forType:NSRTFDPboardType];
 		}
 	}
 	else if ([type isEqualToString:NSHTMLPboardType])
