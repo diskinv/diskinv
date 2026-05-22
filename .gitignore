@@ -1,0 +1,15 @@
+# Xcode build output
+build/
+DerivedData/
+
+# Xcode per-user state
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# macOS
+.DS_Store
+
+# Editor / local
+*.swp
+.claude/settings.local.json

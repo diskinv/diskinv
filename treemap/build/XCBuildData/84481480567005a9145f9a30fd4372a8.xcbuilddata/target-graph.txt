@@ -1,2 +1,0 @@
-Target dependency graph (1 target)
-Target 'TreeMapView' in project 'TreeMapView' (no dependencies)
