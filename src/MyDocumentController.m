@@ -170,6 +170,12 @@ BOOL g_EnableLogging;
 }
 
 
+- (void) dealloc
+{
+	[_donationPanelNibTopLevelObjects release];
+	[super dealloc];
+}
+
 #pragma mark --------app notifications-----------------
 
 - (void) applicationWillFinishLaunching: (NSNotification*) notification

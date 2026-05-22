@@ -60,7 +60,8 @@
 }
 
 - (void) dealloc
-{	
+{
+    [_nibTopLevelObjects release];
     [super dealloc];
 }
 
