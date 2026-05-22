@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict/>
+<dict>
+	<!--
+	  Allow loading the embedded TreeMapView.framework regardless of whether
+	  it was signed with the same Team ID as the app. Required because the
+	  ad-hoc GitHub release build signs framework and app with "-" (no team),
+	  and Hardened Runtime otherwise rejects any non-Apple library that does
+	  not share the host app's Team ID. See issue #2.
+	-->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
 </plist>
