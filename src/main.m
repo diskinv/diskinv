@@ -16,7 +16,14 @@
 
 #import <Cocoa/Cocoa.h>
 
+// Xcode generates this header from every @objc-exposed Swift declaration
+// in the target. Imported here as a one-time sanity check that the
+// Swift/ObjC bridge is live; can be removed once real Swift consumers
+// exist elsewhere.
+#import "Disk_Inventory_Xs-Swift.h"
+
 int main(int argc, const char *argv[])
 {
+    NSCAssert([DIXSwiftShim isReady], @"Swift bridge not initialised");
     return NSApplicationMain(argc, argv);
 }

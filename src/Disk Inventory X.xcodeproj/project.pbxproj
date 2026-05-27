@@ -32,6 +32,7 @@
 		FC9CF15627E138DC00BEB93D /* TreeMapView.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FC347F9822CBDF870002CDED /* TreeMapView.framework */; };
 		FCB2FDC42375F4E100DC4806 /* NSFileManager-Extensions.m in Sources */ = {isa = PBXBuildFile; fileRef = FCB2FDC32375F4E100DC4806 /* NSFileManager-Extensions.m */; };
 		FCCFB2AA097FA3FD009EA2B6 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = FCCFB2A9097FA3FD009EA2B6 /* main.m */; };
+		FCSWFT010000000000001 /* Shim.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCSWFT020000000000001 /* Shim.swift */; };
 		FCCFB303097FA42B009EA2B6 /* DIXTableView.m in Sources */ = {isa = PBXBuildFile; fileRef = FCCFB2AD097FA42B009EA2B6 /* DIXTableView.m */; };
 		FCCFB304097FA42B009EA2B6 /* DIXOutlineView.m in Sources */ = {isa = PBXBuildFile; fileRef = FCCFB2AF097FA42B009EA2B6 /* DIXOutlineView.m */; };
 		FCCFB305097FA42B009EA2B6 /* GenericArrayController.m in Sources */ = {isa = PBXBuildFile; fileRef = FCCFB2B0097FA42B009EA2B6 /* GenericArrayController.m */; };
@@ -209,6 +210,8 @@
 		FCB2FDC32375F4E100DC4806 /* NSFileManager-Extensions.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSFileManager-Extensions.m"; sourceTree = "<group>"; };
 		FCB5709822CD2DE60014B794 /* BuildRelease.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = BuildRelease.sh; sourceTree = "<group>"; };
 		FCCFB2A9097FA3FD009EA2B6 /* main.m */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		FCSWFT020000000000001 /* Shim.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Shim.swift; sourceTree = "<group>"; };
+		FCSWFT020000000000002 /* Disk Inventory X-Bridging-Header.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "Disk Inventory X-Bridging-Header.h"; sourceTree = "<group>"; };
 		FCCFB2AC097FA42B009EA2B6 /* DIXTableView.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = DIXTableView.h; sourceTree = "<group>"; };
 		FCCFB2AD097FA42B009EA2B6 /* DIXTableView.m */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.objc; path = DIXTableView.m; sourceTree = "<group>"; };
 		FCCFB2AE097FA42B009EA2B6 /* DIXOutlineView.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = DIXOutlineView.h; sourceTree = "<group>"; };
@@ -372,6 +375,8 @@
 			isa = PBXGroup;
 			children = (
 				32DBCF750370BD2300C91783 /* Disk Inventory X_Prefix.pch */,
+				FCSWFT020000000000002 /* Disk Inventory X-Bridging-Header.h */,
+				FCSWFT020000000000001 /* Shim.swift */,
 				FCCFB2A9097FA3FD009EA2B6 /* main.m */,
 			);
 			includeInIndex = 0;
@@ -790,6 +795,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				FCCFB2AA097FA3FD009EA2B6 /* main.m in Sources */,
+				FCSWFT010000000000001 /* Shim.swift in Sources */,
 				FCCFB303097FA42B009EA2B6 /* DIXTableView.m in Sources */,
 				FCCFB304097FA42B009EA2B6 /* DIXOutlineView.m in Sources */,
 				FCCFB305097FA42B009EA2B6 /* GenericArrayController.m in Sources */,
@@ -1031,7 +1037,8 @@
 				PRODUCT_NAME = "Disk Inventory Xs";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
-				SWIFT_VERSION = 4.2;
+				SWIFT_OBJC_BRIDGING_HEADER = "Disk Inventory X-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
 				WRAPPER_EXTENSION = app;
 			};
 			name = Debug;
@@ -1064,7 +1071,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.derlien.DiskInventoryX;
 				PRODUCT_NAME = "Disk Inventory Xs";
 				SDKROOT = macosx;
-				SWIFT_VERSION = 4.2;
+				SWIFT_OBJC_BRIDGING_HEADER = "Disk Inventory X-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
 				WRAPPER_EXTENSION = app;
 			};
 			name = Release;
