@@ -89,11 +89,9 @@ class DrivesPanelController: NSObject {
 
             // defer to the next loop cycle (otherwise the "Open Volume" button
             // stays visually pressed during the loading)
-            RunLoop.current.perform(NSSelectorFromString("openDocumentWithContentsOfFile:"),
-                                    target: NSDocumentController.shared,
-                                    argument: path,
-                                    order: 1,
-                                    modes: [.default])
+            DispatchQueue.main.async {
+                (NSDocumentController.shared as? MyDocumentController)?.openDocument(withContentsOfFile: path)
+            }
         }
     }
 

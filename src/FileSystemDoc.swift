@@ -29,14 +29,22 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
     //KVO-observed by the controllers via key path "selectedItem"
     //(DocKeySelectedItem). `dynamic` makes it KVO-compliant.
     @objc dynamic private var _selectedItem: FSItem?
-    private let _zoomStack = NSMutableArray()
-    private var _fileKindStatistics = NSMutableDictionary()   //kind name -> FileKindStatistic
+    //Private backing storage: native Swift array. The public zoomStack() getter
+    //bridges to NSArray to preserve its KVC/binding-visible return type. (The
+    //original NSMutableArray was mutated in place without KVO notifications, so
+    //reassigning the Swift array preserves the exact notification behavior.)
+    private var _zoomStack: [FSItem] = []
+    //Private backing storage: native Swift dictionary (kind name ->
+    //FileKindStatistic). The public kindStatistics() getter bridges to
+    //NSDictionary to preserve its KVC/binding-visible return type.
+    private var _fileKindStatistics: [String: FileKindStatistic] = [:]
     private var _viewOptions: NSMutableDictionary = NSMutableDictionary.dictionaryWithDefaults()
     private var _kindColors: FileTypeColors?
 
     //these variables are used during the initial directory scan
     private var _progressController: LoadingPanelController?
-    private var _directoryStack: NSMutableArray?
+    //Private transient scan state: stack of folders during the progress scan.
+    private var _directoryStack: [FSItem]?
 
     //context pointer for the ShareKindColors user-defaults observation
     private static var shareKindColorsContext = 0
@@ -120,9 +128,30 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
 
             rootItem.setDelegate(self)
 
-            try rootItem.loadChildren()
+            if FSItem.parallelScanEnabled {
+                //Parallel path: dispatch the whole scan onto a background queue
+                //and keep the main thread pumping the progress panel (so Cancel
+                //stays live and the UI never freezes).
+                try runParallelScan(rootItem: rootItem)
+            } else {
+                //Serial path (DIX_PARALLEL_SCAN=0): unchanged inline walk, whose
+                //fsItemEnteringFolder: callbacks pump the runloop themselves.
+                try rootItem.loadChildren()
+            }
 
             //ok, now we've got an FSItem for every file and directory in the given folder
+
+            //Phase 2 (main thread, unchanged): finalize sizes (incl. OtherSpace
+            //via the now-final root size) then collect per-kind statistics.
+            //
+            //The serial scanner ends loadChildrenSerial with
+            //recalculateSize(true, ...) (physical), which both sorts every
+            //folder's children by size and re-derives file sizes physically. We
+            //reproduce exactly that call here so the parallel result is
+            //byte-identical (matching size value AND child ordering).
+            if FSItem.parallelScanEnabled {
+                rootItem.recalculateSize(true, updateParent: false)
+            }
 
             //collect sizes and file count of all file kinds
             try refreshFileKindStatisticsThrowing()
@@ -159,6 +188,55 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
     @objc(cancelScanningFolder:)
     @IBAction func cancelScanningFolder(_ sender: Any?) {
         NSApplication.shared.stopModal()
+    }
+
+    //Drive the parallel phase-1 scan: snapshot the behavior flags on the main
+    //thread, dispatch the coordinator+workers onto a background queue, and pump
+    //the progress panel here on the main thread at ~5 Hz until the scan finishes
+    //(or the user cancels / it errors). Rethrows the scan's error so the
+    //existing do/catch in readFromFolder performs the identical tear-down.
+    private func runParallelScan(rootItem: FSItem) throws {
+        //snapshot delegate-derived flags ONCE on the main thread (workers must
+        //not call the delegate). setKindStrings == true mirrors loadChildren().
+        let params = rootItem.makeScanParams(setKindStrings: true)
+        let progress = ScanProgress()
+
+        //capture the scan's outcome to rethrow on the main thread after join.
+        var scanError: Error?
+
+        let scanQueue = DispatchQueue(label: "com.derlien.diskinventoryx.scan.coordinator")
+        scanQueue.async {
+            do {
+                try rootItem.loadChildrenParallel(params: params, progress: progress)
+            } catch {
+                scanError = error
+            }
+            //mark finished LAST so the pump loop only exits once scanError is set
+            progress.finished = true
+        }
+
+        //main-thread pump loop: refresh the panel and watch for Cancel.
+        //LoadingPanelController.runEventLoop() self-throttles to ~5 Hz.
+        while !progress.finished {
+            if let progressController = _progressController {
+                progressController.setMessageText(progress.currentPath)
+                progressController.runEventLoop()
+                if progressController.cancelPressed() {
+                    progress.cancelled = true
+                }
+            }
+            //small sleep so we don't spin the CPU between event-loop pumps
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+
+        //ensure the background block's `progress.finished = true` write (and the
+        //scanError write that precedes it) are observed here before we read
+        //scanError. group-less join: spin until the queue is drained.
+        scanQueue.sync { }
+
+        if let scanError = scanError {
+            throw scanError
+        }
     }
 
     //MARK: view options
@@ -412,7 +490,17 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
             refreshedItem = newItem
             newItem.setDelegate(self)
             if newItem.isFolder() {
-                try newItem.loadChildren()
+                if FSItem.parallelScanEnabled {
+                    //Parallel refresh: same background-scan + main-thread pump as
+                    //the initial scan. The progress panel here is optional (only
+                    //shown for "many"-child items); runParallelScan tolerates a
+                    //nil _progressController. Phase 2 recalc mirrors what the
+                    //serial loadChildren did internally.
+                    try runParallelScan(rootItem: newItem)
+                    newItem.recalculateSize(true, updateParent: false)
+                } else {
+                    try newItem.loadChildren()
+                }
             }
 
             _progressController = nil
@@ -463,15 +551,15 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
         if zoomedItemIsInvalid {
             var newZoomItem: FSItem? = item
             //zoom to an ancestor of "item" which is in the zoom stack
-            while newZoomItem != nil && _zoomStack.indexOfObjectIdentical(to: newZoomItem!) == NSNotFound {
+            while newZoomItem != nil && !_zoomStack.contains(where: { $0 === newZoomItem! }) {
                 newZoomItem = newZoomItem?.parent()
             }
 
             //will post a notification about the change
             zoomOut(toItem: newZoomItem)
         } else {
-            if (_zoomStack.lastObject as? FSItem) === item {
-                _zoomStack.replaceObject(at: _zoomStack.count - 1, with: refreshedItem!)
+            if _zoomStack.last === item {
+                _zoomStack[_zoomStack.count - 1] = refreshedItem!
             }
 
             //notify observers of the change
@@ -493,12 +581,12 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
     //MARK: zoom
 
     @objc func zoomedItem() -> FSItem? {
-        return _zoomStack.count == 0 ? rootItem() : (_zoomStack.lastObject as? FSItem)
+        return _zoomStack.isEmpty ? rootItem() : _zoomStack.last
     }
 
     @objc(zoomIntoItem:)
     func zoomIntoItem(_ item: FSItem) {
-        if _zoomStack.count > 0 && (item === (_zoomStack.lastObject as? FSItem)) {
+        if !_zoomStack.isEmpty && item === _zoomStack.last {
             return
         }
 
@@ -507,7 +595,7 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
         //reset selection as the currently selected item might not be a child of the item to zoom in
         setSelectedItem(nil)
 
-        _zoomStack.add(item)
+        _zoomStack.append(item)
 
         //the file kind statistic should only cover the currently visible part of the tree
         refreshFileKindStatistics()
@@ -516,10 +604,10 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
     }
 
     @objc func zoomOutOneStep() {
-        if _zoomStack.count > 0 {
+        if !_zoomStack.isEmpty {
             let oldZoomedItem = zoomedItem()
 
-            _zoomStack.removeLastObject()
+            _zoomStack.removeLast()
 
             //the file kind statistic should only cover the currently visible part of the tree
             refreshFileKindStatistics()
@@ -535,25 +623,24 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
 
     @objc(zoomOutToItem:)
     func zoomOut(toItem item: FSItem?) {
-        assert(_zoomStack.count > 0, "can't zoom out if zoom stack is empty")
+        assert(!_zoomStack.isEmpty, "can't zoom out if zoom stack is empty")
 
         assert(item == nil
                || item === rootItem()
-               || _zoomStack.indexOfObjectIdentical(to: item!) != NSNotFound)
+               || _zoomStack.contains(where: { $0 === item! }))
 
         let oldZoomedItem = zoomedItem()
 
         if item == nil || item === rootItem() {
-            _zoomStack.removeAllObjects()
+            _zoomStack.removeAll()
         } else if _zoomStack.count == 1 {
-            assert(item === (_zoomStack.lastObject as? FSItem), "zoom error")
-            _zoomStack.removeAllObjects()
+            assert(item === _zoomStack.last, "zoom error")
+            _zoomStack.removeAll()
         } else {
-            let itemIndex = _zoomStack.indexOfObjectIdentical(to: item!)
-            if itemIndex != NSNotFound {
+            if let itemIndex = _zoomStack.firstIndex(where: { $0 === item! }) {
                 var itemsToRemove = _zoomStack.count - itemIndex - 1
                 while itemsToRemove > 0 {
-                    _zoomStack.removeLastObject()
+                    _zoomStack.removeLast()
                     itemsToRemove -= 1
                 }
             }
@@ -571,7 +658,8 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
     }
 
     @objc func zoomStack() -> NSArray {
-        return _zoomStack
+        //bridge to NSArray to preserve the original return type
+        return _zoomStack as NSArray
     }
 
     //MARK: selection
@@ -640,7 +728,8 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
 
     @objc func kindStatistics() -> NSDictionary {
         assert(_fileKindStatistics.count >= 0, "kind statistics aren't collected yet")
-        return _fileKindStatistics
+        //bridge to NSDictionary to preserve the original return type
+        return _fileKindStatistics as NSDictionary
     }
 
     @objc(kindStatisticForItem:)
@@ -697,11 +786,12 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
         }
 
         if _directoryStack == nil {
-            _directoryStack = NSMutableArray(capacity: 20)
+            _directoryStack = []
+            _directoryStack?.reserveCapacity(20)
         }
 
-        assert((_directoryStack?.lastObject as? FSItem) === item.parent())
-        _directoryStack?.add(item)
+        assert(_directoryStack?.last === item.parent())
+        _directoryStack?.append(item)
 
         //we display only folders 4 levels deep and we don't go into packages
         if (_directoryStack?.count ?? 0) <= 4 {
@@ -726,8 +816,8 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
             return true   //true == continue loading
         }
 
-        assert((_directoryStack?.lastObject as? FSItem) === item)
-        _directoryStack?.removeLastObject()
+        assert(_directoryStack?.last === item)
+        _directoryStack?.removeLast()
 
         return true
     }
@@ -793,7 +883,7 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
 
         //if we are called with nil as item, we rebuild the statistic
         if item == nil {
-            _fileKindStatistics = NSMutableDictionary()
+            _fileKindStatistics = [:]
             item = zoomedItem()
         }
 
@@ -809,7 +899,7 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
                 } else {
                     //we don't have a statistic object for the item's kind yet, so create one
                     let kindStatistic = FileKindStatistic(item: item)
-                    _fileKindStatistics.setObject(kindStatistic, forKey: kind as NSString)
+                    _fileKindStatistics[kind] = kindStatistic
                 }
             }
         } else if includingChilds {
@@ -845,7 +935,7 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
     private func recalculateFileKindStatisticSizes() {
         willChangeValue(forKey: "kindStatistics")
 
-        for case let statistic as FileKindStatistic in kindStatistics().objectEnumerator() {
+        for statistic in _fileKindStatistics.values {
             statistic.recalculateSize()
         }
 
@@ -853,13 +943,13 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
     }
 
     private func reserveColorsForLargestKinds() {
-        //get a mutable copy of the values
-        let kinds = (kindStatistics().allValues as NSArray).mutableCopy() as! NSMutableArray
+        //order Statistics descendingly by size, mirroring the former
+        //NSMutableArray.sortUsingSelector(compareSizeDescendingly:)
+        let kinds = _fileKindStatistics.values.sorted {
+            $0.compareSizeDescendingly($1) == .orderedAscending
+        }
 
-        //order Statistics descendingly by size
-        kinds.sort(using: #selector(FileKindStatistic.compareSizeDescendingly(_:)))
-
-        for case let kindStat as FileKindStatistic in kinds {
+        for kindStat in kinds {
             _ = fileTypeColors().color(forKind: kindStat.kindName)
         }
     }

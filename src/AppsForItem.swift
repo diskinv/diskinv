@@ -38,8 +38,14 @@ final class AppsForItem: NSObject {
     @objc var defaultAppURL: NSURL? {
         if !defaultAppComputed {
             defaultAppComputed = true
-            guard let appURL = LSCopyDefaultApplicationURLForURL(itemURL as CFURL, Self.roleMask, nil)?
-                .takeRetainedValue() as NSURL?
+            let appURL: NSURL?
+            if #available(macOS 12.0, *) {
+                appURL = NSWorkspace.shared.urlForApplication(toOpen: itemURL as URL) as NSURL?
+            } else {
+                appURL = LSCopyDefaultApplicationURLForURL(itemURL as CFURL, Self.roleMask, nil)?
+                    .takeRetainedValue() as NSURL?
+            }
+            guard let appURL = appURL
             else { return nil }
             if check(appURL: appURL, checkDefaultApp: false) {
                 _defaultAppURL = appURL
@@ -71,7 +77,15 @@ final class AppsForItem: NSObject {
 
     @objc(openItemURL:withAppURL:)
     class func openItem(url itemURL: NSURL, withAppURL appURL: NSURL) {
-        NSWorkspace.shared.openFile(itemURL.path ?? "", withApplication: appURL.path)
+        if #available(macOS 10.15, *) {
+            NSWorkspace.shared.open(
+                [itemURL as URL],
+                withApplicationAt: appURL as URL,
+                configuration: NSWorkspace.OpenConfiguration()
+            )
+        } else {
+            NSWorkspace.shared.openFile(itemURL.path ?? "", withApplication: appURL.path)
+        }
     }
 
     // MARK: - private
@@ -90,13 +104,24 @@ final class AppsForItem: NSObject {
 
     // NOTE: this searches network volumes
     private class func applicationURLs(forItemURL itemURL: NSURL) -> [NSURL] {
-        guard let urls = LSCopyApplicationURLsForURL(itemURL as CFURL, roleMask)?
-            .takeRetainedValue() as? [NSURL]
-        else { return [] }
+        if #available(macOS 12.0, *) {
+            let urls = NSWorkspace.shared.urlsForApplications(toOpen: itemURL as URL)
 
-        // filter out .exe files
-        return urls.filter {
-            ($0.path as NSString?)?.pathExtension.caseInsensitiveCompare("exe") != .orderedSame
+            // filter out .exe files
+            return urls
+                .filter {
+                    ($0.path as NSString).pathExtension.caseInsensitiveCompare("exe") != .orderedSame
+                }
+                .map { $0 as NSURL }
+        } else {
+            guard let urls = LSCopyApplicationURLsForURL(itemURL as CFURL, roleMask)?
+                .takeRetainedValue() as? [NSURL]
+            else { return [] }
+
+            // filter out .exe files
+            return urls.filter {
+                ($0.path as NSString?)?.pathExtension.caseInsensitiveCompare("exe") != .orderedSame
+            }
         }
     }
 }

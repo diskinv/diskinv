@@ -46,11 +46,10 @@ class MyDocumentController: NSDocumentController {
             //open selected folders
             for fileURL in sheet.urls {
                 //defer it till the next loop cycle to let the sheet closes itself first
-                RunLoop.current.perform(#selector(openDocument(withContentsOfFile:)),
-                                        target: self,
-                                        argument: fileURL.path,
-                                        order: 1,
-                                        modes: [.default])
+                let path = fileURL.path
+                DispatchQueue.main.async { [weak self] in
+                    self?.openDocument(withContentsOfFile: path)
+                }
             }
         }
     }
@@ -199,7 +198,9 @@ class MyDocumentController: NSDocumentController {
         //thanks to nil-safety, the zoomStack is empty if there is no current doc
         let zoomStack = doc?.zoomStack() ?? []
 
-        for i in 0..<zoomStack.count {
+        //rebuild the whole menu from the zoom stack: item 0 is the root item,
+        //items 1..N correspond to zoomStack[i-1]
+        zoomStackMenu.items = (0..<zoomStack.count).map { i in
             let fsItem: FSItem?
             if i == 0 {
                 fsItem = doc?.rootItem()
@@ -207,24 +208,16 @@ class MyDocumentController: NSDocumentController {
                 fsItem = zoomStack[i - 1] as? FSItem
             }
 
-            if i >= zoomStackMenu.numberOfItems {
-                zoomStackMenu.addItem(NSMenuItem())
-            }
-
-            let menuItem = zoomStackMenu.item(at: i)
-            menuItem?.title = fsItem?.displayName() ?? ""
+            let menuItem = NSMenuItem()
+            menuItem.title = fsItem?.displayName() ?? ""
             if i > 0 { //no tooltip for first item as the tooltip is the same as the title
-                menuItem?.toolTip = fsItem?.displayPath()
+                menuItem.toolTip = fsItem?.displayPath()
             }
-            menuItem?.image = fsItem?.icon(withSize: 16)
-            menuItem?.representedObject = fsItem
-            menuItem?.target = nil
-            menuItem?.action = NSSelectorFromString("zoomOutTo:")
-        }
-
-        //remove any supernumerary menu items
-        while zoomStackMenu.numberOfItems > zoomStack.count {
-            zoomStackMenu.removeItem(at: zoomStackMenu.numberOfItems - 1)
+            menuItem.image = fsItem?.icon(withSize: 16)
+            menuItem.representedObject = fsItem
+            menuItem.target = nil
+            menuItem.action = NSSelectorFromString("zoomOutTo:")
+            return menuItem
         }
     }
 }

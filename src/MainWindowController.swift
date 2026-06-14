@@ -314,33 +314,25 @@ class MainWindowController: OAToolbarWindowControllerEx {
         guard let itemURL = fsDocument()?.selectedItem()?.fileURL() else { return }
 
         let apps = AppsForItem.appsForItem(itemURL)
-        var menuItem: NSMenuItem
 
+        // Rebuild the submenu from scratch: when there is a default app, the
+        // items are [default app, separator, additional apps...]; otherwise the
+        // submenu is empty (nothing can open the file).
+        var items: [NSMenuItem] = []
         if let defaultAppURL = apps.defaultAppURL {
-            // item 0 is the default app, item 1 a separator
-            if _openWithSubMenu.numberOfItems == 0 {
-                _openWithSubMenu.addItem(NSMenuItem())
-                _openWithSubMenu.addItem(NSMenuItem.separator())
-            }
-
-            menuItem = _openWithSubMenu.item(at: 0)!
-            configureOpenWith(menuItem, appURL: defaultAppURL)
-
-            for (i, appURL) in apps.additionalAppURLs.enumerated() {
-                let menuItemIndex = i + 2
-                if menuItemIndex >= _openWithSubMenu.numberOfItems {
-                    _openWithSubMenu.addItem(NSMenuItem())
-                }
-                menuItem = _openWithSubMenu.item(at: menuItemIndex)!
-                configureOpenWith(menuItem, appURL: appURL)
+            items.append(makeOpenWithItem(appURL: defaultAppURL))   // item 0: default app
+            items.append(NSMenuItem.separator())                    // item 1: separator
+            for appURL in apps.additionalAppURLs {
+                items.append(makeOpenWithItem(appURL: appURL))
             }
         }
+        _openWithSubMenu.items = items
+    }
 
-        // remove any leftover items (all of them if nothing can open the file)
-        let removeFromIndex = apps.defaultAppURL != nil ? apps.additionalAppURLs.count + 2 : 0
-        while _openWithSubMenu.numberOfItems > removeFromIndex {
-            _openWithSubMenu.removeItem(at: _openWithSubMenu.numberOfItems - 1)
-        }
+    private func makeOpenWithItem(appURL: NSURL) -> NSMenuItem {
+        let menuItem = NSMenuItem()
+        configureOpenWith(menuItem, appURL: appURL)
+        return menuItem
     }
 
     private func configureOpenWith(_ menuItem: NSMenuItem, appURL: NSURL) {
