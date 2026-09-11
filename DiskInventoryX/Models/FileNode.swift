@@ -1,180 +1,124 @@
-//
-//  FileNode.swift
-//  DiskInventoryX
-//
-//  File system node representing a file or folder
-//
-
 import Foundation
-import AppKit
-import UniformTypeIdentifiers
 
-enum FileNodeType: Equatable {
-    case regular
-    case otherSpace
-    case freeSpace
+enum FileNodeType: String, Sendable {
+  case regular
+  case otherSpace
+  case freeSpace
 }
 
-class FileNode: Identifiable, ObservableObject {
-    let id = UUID()
-    let url: URL
-    let name: String
-    let isDirectory: Bool
-    let isPackage: Bool
-    var size: UInt64
-    let type: FileNodeType
+struct FileNode: Identifiable, Hashable, Sendable {
+  let id: String
+  let path: String
+  let name: String
+  let isDirectory: Bool
+  let isPackage: Bool
+  let size: UInt64
+  let kindID: UInt32
+  let type: FileNodeType
+  let children: [FileNode]
 
-    weak var parent: FileNode?
-    var children: [FileNode] = []
+  init(
+    id: String? = nil,
+    path: String,
+    name: String,
+    isDirectory: Bool,
+    isPackage: Bool = false,
+    size: UInt64,
+    kindID: UInt32,
+    type: FileNodeType = .regular,
+    children: [FileNode] = []
+  ) {
+    self.id = id ?? path
+    self.path = path
+    self.name = name
+    self.isDirectory = isDirectory
+    self.isPackage = isPackage
+    self.size = size
+    self.kindID = kindID
+    self.type = type
+    self.children = children
+  }
 
-    // Lazily computed properties
-    private var _kindName: String?
-    private var _utType: UTType?
-    private var _icon: NSImage?
+  static func == (lhs: FileNode, rhs: FileNode) -> Bool {
+    lhs.id == rhs.id
+  }
 
-    // MARK: - Initialization
+  func hash(into hasher: inout Hasher) {
+    hasher.combine(id)
+  }
 
-    init(url: URL, name: String? = nil, isDirectory: Bool = false, isPackage: Bool = false,
-         size: UInt64 = 0, type: FileNodeType = .regular) {
-        self.url = url
-        self.name = name ?? url.lastPathComponent
-        self.isDirectory = isDirectory
-        self.isPackage = isPackage
-        self.size = size
-        self.type = type
+  var url: URL? {
+    type == .regular ? URL(fileURLWithPath: path) : nil
+  }
+
+  var isSpecialItem: Bool {
+    type != .regular
+  }
+
+  func node(withID nodeID: String) -> FileNode? {
+    if id == nodeID { return self }
+    for child in children {
+      if let match = child.node(withID: nodeID) { return match }
+    }
+    return nil
+  }
+
+  func visibleEntries(showPackageContents: Bool, kindID wantedKindID: UInt32? = nil) -> [FileNode] {
+    var result: [FileNode] = []
+    collectVisibleEntries(
+      showPackageContents: showPackageContents,
+      kindID: wantedKindID,
+      into: &result
+    )
+    return result
+  }
+
+  func isDescendant(of ancestor: FileNode) -> Bool {
+    guard type == .regular, ancestor.type == .regular, id != ancestor.id else { return false }
+    let prefix = ancestor.path.hasSuffix("/") ? ancestor.path : ancestor.path + "/"
+    return path.hasPrefix(prefix)
+  }
+
+  func replacingChildren(_ newChildren: [FileNode]) -> FileNode {
+    FileNode(
+      id: id,
+      path: path,
+      name: name,
+      isDirectory: isDirectory,
+      isPackage: isPackage,
+      size: newChildren.reduce(0) { $0.saturatingAdding($1.size) },
+      kindID: kindID,
+      type: type,
+      children: newChildren
+    )
+  }
+
+  private func collectVisibleEntries(
+    showPackageContents: Bool,
+    kindID wantedKindID: UInt32?,
+    into result: inout [FileNode]
+  ) {
+    let actsAsLeaf = !isDirectory || isPackage && !showPackageContents || isSpecialItem
+    if actsAsLeaf {
+      if wantedKindID == nil || kindID == wantedKindID {
+        result.append(self)
+      }
+      return
     }
 
-    // MARK: - Computed Properties
-
-    var kindName: String {
-        if let cached = _kindName {
-            return cached
-        }
-
-        switch type {
-        case .otherSpace:
-            _kindName = "Other Space"
-        case .freeSpace:
-            _kindName = "Free Space"
-        case .regular:
-            if isDirectory && !isPackage {
-                _kindName = "Folder"
-            } else if let utType = utType {
-                _kindName = utType.localizedDescription ?? utType.identifier
-            } else {
-                _kindName = "Document"
-            }
-        }
-
-        return _kindName ?? "Unknown"
+    for child in children {
+      child.collectVisibleEntries(
+        showPackageContents: showPackageContents,
+        kindID: wantedKindID,
+        into: &result
+      )
     }
-
-    var utType: UTType? {
-        if _utType == nil && type == .regular {
-            if isDirectory && !isPackage {
-                _utType = .folder
-            } else {
-                _utType = UTType(filenameExtension: url.pathExtension) ?? .data
-            }
-        }
-        return _utType
-    }
-
-    var icon: NSImage {
-        if let cached = _icon {
-            return cached
-        }
-
-        switch type {
-        case .freeSpace:
-            _icon = NSImage(systemSymbolName: "externaldrive", accessibilityDescription: "Free Space")
-                ?? NSImage(named: NSImage.folderName)!
-        case .otherSpace:
-            _icon = NSImage(systemSymbolName: "questionmark.folder", accessibilityDescription: "Other Space")
-                ?? NSImage(named: NSImage.folderName)!
-        case .regular:
-            _icon = NSWorkspace.shared.icon(forFile: url.path)
-        }
-
-        _icon?.size = NSSize(width: 16, height: 16)
-        return _icon ?? NSImage(named: NSImage.folderName)!
-    }
-
-    var displayPath: String {
-        var components: [String] = []
-        var current: FileNode? = self
-
-        while let node = current {
-            components.insert(node.name, at: 0)
-            current = node.parent
-        }
-
-        return components.joined(separator: "/")
-    }
-
-    var isSpecialItem: Bool {
-        type != .regular
-    }
-
-    // MARK: - Tree Operations
-
-    func findNode(at path: [String]) -> FileNode? {
-        guard !path.isEmpty else { return self }
-
-        let targetName = path[0]
-        guard let child = children.first(where: { $0.name == targetName }) else {
-            return nil
-        }
-
-        if path.count == 1 {
-            return child
-        }
-
-        return child.findNode(at: Array(path.dropFirst()))
-    }
-
-    func pathFromRoot() -> [FileNode] {
-        var path: [FileNode] = [self]
-        var current = parent
-
-        while let node = current {
-            path.insert(node, at: 0)
-            current = node.parent
-        }
-
-        return path
-    }
-
-    func sortChildrenBySize() {
-        children.sort { $0.size > $1.size }
-        for child in children where child.isDirectory {
-            child.sortChildrenBySize()
-        }
-    }
-
-    func recalculateSize() {
-        if isDirectory {
-            size = children.reduce(0) { $0 + $1.size }
-        }
-    }
+  }
 }
 
-// MARK: - Hashable
-
-extension FileNode: Hashable {
-    static func == (lhs: FileNode, rhs: FileNode) -> Bool {
-        lhs.id == rhs.id
-    }
-
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-    }
-}
-
-// MARK: - CustomStringConvertible
-
-extension FileNode: CustomStringConvertible {
-    var description: String {
-        "\(name) (\(FileSizeFormatter.string(from: size)))"
-    }
+extension UInt64 {
+  func saturatingAdding(_ other: UInt64) -> UInt64 {
+    let (sum, overflow) = addingReportingOverflow(other)
+    return overflow ? .max : sum
+  }
 }

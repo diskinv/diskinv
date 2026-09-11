@@ -1,5 +1,0 @@
-/* Prefs for Icon buttons - OmniAppKit is coded to look for Preferences.strings */
-
-"General" = "Général";
-"Treemap" = "Carte";
-"Finder Plugin" = "Plugin Finder";
