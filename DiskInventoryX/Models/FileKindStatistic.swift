@@ -32,7 +32,27 @@ enum FileSizeMode: String, CaseIterable, Identifiable, Sendable {
 }
 
 struct ScanOptions: Sendable {
+  static let maximumWorkerCount = 64
+
   let sizeMode: FileSizeMode
+  let workerCount: Int
+
+  init(sizeMode: FileSizeMode, workerCount: Int = 0) {
+    self.sizeMode = sizeMode
+    self.workerCount = workerCount
+  }
+
+  var resolvedWorkerCount: Int {
+    Self.resolveWorkerCount(
+      workerCount, activeProcessorCount: ProcessInfo.processInfo.activeProcessorCount)
+  }
+
+  static func resolveWorkerCount(_ requested: Int, activeProcessorCount: Int) -> Int {
+    if requested == 0 {
+      return max(1, activeProcessorCount - 1)
+    }
+    return min(max(1, requested), maximumWorkerCount)
+  }
 }
 
 struct ScanProgress: Equatable, Sendable {

@@ -22,6 +22,7 @@ final class AppState: ObservableObject {
   @Published private(set) var treeRevision = UUID()
 
   @AppStorage("sizeMode") var sizeModeRaw = FileSizeMode.logical.rawValue
+  @AppStorage("scanWorkerCount") var scanWorkerCount = 0
   @AppStorage("showPackageContents") var showPackageContents = false {
     didSet { applyPresentationOptions() }
   }
@@ -50,6 +51,13 @@ final class AppState: ObservableObject {
 
   var scannedSizeMode: FileSizeMode? {
     result?.sizeMode
+  }
+
+  var effectiveScanWorkerCount: Int {
+    ScanOptions.resolveWorkerCount(
+      scanWorkerCount,
+      activeProcessorCount: ProcessInfo.processInfo.activeProcessorCount
+    )
   }
 
   var scanIssues: [ScanIssue] {
@@ -102,11 +110,11 @@ final class AppState: ObservableObject {
     kindStatistics = []
     filteredNodes = []
 
-    let options = ScanOptions(sizeMode: sizeMode)
+    let options = ScanOptions(sizeMode: sizeMode, workerCount: scanWorkerCount)
     scanTask = Task.detached(priority: .userInitiated) { [weak self] in
       guard let self else { return }
       do {
-        let result = try FileScanner.scan(url: url, options: options) { progress in
+        let result = try await FileScanner.scan(url: url, options: options) { progress in
           Task { @MainActor in
             guard self.scanToken == token else { return }
             self.scanProgress = progress

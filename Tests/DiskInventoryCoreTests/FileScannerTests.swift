@@ -4,7 +4,7 @@ import XCTest
 @testable import DiskInventoryXs
 
 final class FileScannerTests: XCTestCase {
-  func testScanIncludesHiddenFilesAndPackageContents() throws {
+  func testScanIncludesHiddenFilesAndPackageContents() async throws {
     let fixture = try TemporaryDirectory()
     try fixture.write(bytes: 11, to: ".hidden")
     try fixture.write(bytes: 17, to: "visible.txt")
@@ -14,7 +14,7 @@ final class FileScannerTests: XCTestCase {
       to: "Example.app/Contents/Info.plist"
     )
 
-    let result = try FileScanner.scan(
+    let result = try await FileScanner.scan(
       url: fixture.url,
       options: ScanOptions(sizeMode: .logical),
       progress: { _ in }
@@ -30,7 +30,7 @@ final class FileScannerTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(result.root.size, 51)
   }
 
-  func testScanDoesNotFollowSymbolicLinks() throws {
+  func testScanDoesNotFollowSymbolicLinks() async throws {
     let fixture = try TemporaryDirectory()
     try fixture.write(bytes: 9, to: "target/file.dat")
     try FileManager.default.createSymbolicLink(
@@ -38,7 +38,7 @@ final class FileScannerTests: XCTestCase {
       withDestinationPath: fixture.url.appendingPathComponent("target").path
     )
 
-    let result = try FileScanner.scan(
+    let result = try await FileScanner.scan(
       url: fixture.url,
       options: ScanOptions(sizeMode: .logical),
       progress: { _ in }
@@ -47,6 +47,48 @@ final class FileScannerTests: XCTestCase {
     let entries = result.root.visibleEntries(showPackageContents: true)
     XCTAssertEqual(entries.filter { $0.name == "file.dat" }.count, 1)
     XCTAssertEqual(entries.filter { $0.name == "link" }.count, 1)
+  }
+
+  func testParallelAndSerialScansMatch() async throws {
+    let fixture = try TemporaryDirectory()
+    for index in 0..<128 {
+      try fixture.write(bytes: index + 1, to: "folder-\(index % 8)/file-\(index).dat")
+    }
+
+    let serial = try await FileScanner.scan(
+      url: fixture.url,
+      options: ScanOptions(sizeMode: .logical, workerCount: 1),
+      progress: { _ in }
+    )
+    let parallel = try await FileScanner.scan(
+      url: fixture.url,
+      options: ScanOptions(sizeMode: .logical, workerCount: 4),
+      progress: { _ in }
+    )
+
+    let serialEntries = Dictionary(
+      uniqueKeysWithValues: serial.root.visibleEntries(showPackageContents: true).map {
+        ($0.path, $0.size)
+      })
+    let parallelEntries = Dictionary(
+      uniqueKeysWithValues: parallel.root.visibleEntries(showPackageContents: true).map {
+        ($0.path, $0.size)
+      })
+    XCTAssertEqual(parallelEntries, serialEntries)
+    XCTAssertEqual(parallel.filesScanned, serial.filesScanned)
+    XCTAssertEqual(parallel.foldersScanned, serial.foldersScanned)
+    XCTAssertEqual(parallel.issueCount, serial.issueCount)
+    XCTAssertEqual(parallel.root.size, serial.root.size)
+  }
+
+  func testWorkerCountResolution() {
+    XCTAssertEqual(ScanOptions.resolveWorkerCount(0, activeProcessorCount: 12), 11)
+    XCTAssertEqual(ScanOptions.resolveWorkerCount(0, activeProcessorCount: 1), 1)
+    XCTAssertEqual(ScanOptions.resolveWorkerCount(6, activeProcessorCount: 12), 6)
+    XCTAssertEqual(
+      ScanOptions.resolveWorkerCount(100, activeProcessorCount: 12),
+      ScanOptions.maximumWorkerCount
+    )
   }
 
   func testTreeMapStaysInsideBoundsWithoutOverlap() {

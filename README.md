@@ -4,7 +4,7 @@ Disk Inventory Xs is a macOS 14 app for finding large files and folders. It show
 
 ## Scan behavior
 
-The scanner enumerates hidden entries and package contents. The package setting changes presentation only, so closing a package in the UI never removes its contents from the measured size. Symbolic links and Finder aliases appear as entries but are not followed.
+The scanner enumerates hidden entries and package contents. Metadata reads use a bounded parallel worker pool; the default setting of 0 uses all but one active CPU core. The package setting changes presentation only, so closing a package in the UI never removes its contents from the measured size. Symbolic links and Finder aliases appear as entries but are not followed.
 
 macOS can deny access to protected paths. The app counts these failures and lists the first 500 after the scan instead of presenting unreadable directories as empty. Grant Full Disk Access in System Settings when a complete volume scan requires it.
 

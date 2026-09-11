@@ -29,7 +29,8 @@ enum FileScanner {
     url originalURL: URL,
     options: ScanOptions,
     progress: @escaping @Sendable (ScanProgress) -> Void
-  ) throws -> ScanResult {
+  ) async throws -> ScanResult {
+    try Task.checkCancellation()
     let url = originalURL.standardizedFileURL
     let issueLog = IssueLog()
     var registry = KindRegistry()
@@ -50,11 +51,13 @@ enum FileScanner {
     var filesScanned = 0
     var foldersScanned = 1
     var entriesScanned = 0
+    let workerCount = options.resolvedWorkerCount
+    let batchSize = min(2_048, max(256, workerCount * 32))
 
     guard
       let enumerator = FileManager.default.enumerator(
         at: url,
-        includingPropertiesForKeys: Array(resourceKeys),
+        includingPropertiesForKeys: nil,
         options: [],
         errorHandler: { failedURL, error in
           issueLog.record(path: failedURL.path, error: error)
@@ -65,65 +68,43 @@ enum FileScanner {
       throw FileScannerError.cannotEnumerate(url.path)
     }
 
-    while let entryURL = enumerator.nextObject() as? URL {
-      try Task.checkCancellation()
+    func append(_ entry: PreparedEntry) {
       entriesScanned += 1
-
-      let level = max(1, enumerator.level)
+      let level = max(1, entry.level)
       while stack.count > level {
         closeLastDirectory(in: &stack)
       }
 
-      do {
-        let values = try entryURL.resourceValues(forKeys: resourceKeys)
-        let isLink = values.isSymbolicLink == true || values.isAliasFile == true
-        let isDirectory = values.isDirectory == true && !isLink
-        let isPackage = values.isPackage ?? false
-        let name = values.name ?? entryURL.lastPathComponent
-        let kindID = registry.kindID(
-          for: values.contentType,
-          pathExtension: entryURL.pathExtension,
-          isDirectory: isDirectory,
-          isPackage: isPackage
-        )
+      if let errorMessage = entry.errorMessage {
+        issueLog.record(path: entry.path, message: errorMessage)
+      }
 
-        if isDirectory {
-          foldersScanned += 1
-          stack.append(
-            NodeBuilder(
-              path: entryURL.path,
-              name: name,
-              isPackage: isPackage,
-              kindID: kindID
-            ))
-        } else {
-          if isLink {
-            enumerator.skipDescendants()
-          }
-          filesScanned += 1
-          stack.last?.append(
-            FileNode(
-              path: entryURL.path,
-              name: name,
-              isDirectory: false,
-              isPackage: false,
-              size: fileSize(from: values, mode: options.sizeMode),
-              kindID: kindID
-            ))
-        }
-      } catch is CancellationError {
-        throw CancellationError()
-      } catch {
-        enumerator.skipDescendants()
-        issueLog.record(path: entryURL.path, error: error)
+      let kindID = registry.kindID(
+        contentTypeIdentifier: entry.contentTypeIdentifier,
+        contentTypeName: entry.contentTypeName,
+        pathExtension: entry.pathExtension,
+        isDirectory: entry.isDirectory,
+        isPackage: entry.isPackage
+      )
+
+      if entry.isDirectory {
+        foldersScanned += 1
+        stack.append(
+          NodeBuilder(
+            path: entry.path,
+            name: entry.name,
+            isPackage: entry.isPackage,
+            kindID: kindID
+          ))
+      } else {
         filesScanned += 1
         stack.last?.append(
           FileNode(
-            path: entryURL.path,
-            name: entryURL.lastPathComponent,
+            path: entry.path,
+            name: entry.name,
             isDirectory: false,
-            size: 0,
-            kindID: FileKind.documentID
+            size: entry.size,
+            kindID: kindID
           ))
       }
 
@@ -135,6 +116,32 @@ enum FileScanner {
             foldersScanned: foldersScanned
           ))
       }
+    }
+
+    var batch: [EntryReference] = []
+    batch.reserveCapacity(batchSize)
+    var ordinal = 0
+
+    while let entryURL = enumerator.nextObject() as? URL {
+      try Task.checkCancellation()
+      batch.append(
+        EntryReference(
+          ordinal: ordinal,
+          level: enumerator.level,
+          url: entryURL
+        ))
+      ordinal += 1
+
+      if batch.count == batchSize {
+        let entries = try await prepare(batch, sizeMode: options.sizeMode, workerCount: workerCount)
+        for entry in entries { append(entry) }
+        batch.removeAll(keepingCapacity: true)
+      }
+    }
+
+    if !batch.isEmpty {
+      let entries = try await prepare(batch, sizeMode: options.sizeMode, workerCount: workerCount)
+      for entry in entries { append(entry) }
     }
 
     while stack.count > 1 {
@@ -161,6 +168,85 @@ enum FileScanner {
       issueCount: issueLog.count,
       volumeSpace: volumeSpace(for: url)
     )
+  }
+
+  private static func prepare(
+    _ references: [EntryReference],
+    sizeMode: FileSizeMode,
+    workerCount: Int
+  ) async throws -> [PreparedEntry] {
+    try await withThrowingTaskGroup(of: PreparedEntry.self) { group in
+      var nextIndex = 0
+      let initialCount = min(workerCount, references.count)
+      while nextIndex < initialCount {
+        let reference = references[nextIndex]
+        group.addTask {
+          try read(reference, sizeMode: sizeMode)
+        }
+        nextIndex += 1
+      }
+
+      var result: [PreparedEntry] = []
+      result.reserveCapacity(references.count)
+      while let entry = try await group.next() {
+        result.append(entry)
+        if nextIndex < references.count {
+          let reference = references[nextIndex]
+          group.addTask {
+            try read(reference, sizeMode: sizeMode)
+          }
+          nextIndex += 1
+        }
+      }
+
+      return result.sorted { $0.ordinal < $1.ordinal }
+    }
+  }
+
+  private static func read(_ reference: EntryReference, sizeMode: FileSizeMode) throws
+    -> PreparedEntry
+  {
+    try Task.checkCancellation()
+    do {
+      let values = try reference.url.resourceValues(forKeys: resourceKeys)
+      try Task.checkCancellation()
+      let isLink = values.isSymbolicLink == true || values.isAliasFile == true
+      let contentType = values.contentType
+      return PreparedEntry(
+        ordinal: reference.ordinal,
+        level: reference.level,
+        path: reference.url.path,
+        name: values.name ?? reference.url.lastPathComponent,
+        pathExtension: reference.url.pathExtension,
+        isDirectory: values.isDirectory == true && !isLink,
+        isPackage: values.isPackage ?? false,
+        size: fileSize(from: values, mode: sizeMode),
+        contentTypeIdentifier: contentType?.identifier,
+        contentTypeName: contentType?.localizedDescription,
+        errorMessage: nil
+      )
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      var isDirectory: ObjCBool = false
+      _ = FileManager.default.fileExists(
+        atPath: reference.url.path,
+        isDirectory: &isDirectory
+      )
+      return PreparedEntry(
+        ordinal: reference.ordinal,
+        level: reference.level,
+        path: reference.url.path,
+        name: reference.url.lastPathComponent,
+        pathExtension: reference.url.pathExtension,
+        isDirectory: isDirectory.boolValue,
+        isPackage: false,
+        size: 0,
+        contentTypeIdentifier: nil,
+        contentTypeName: nil,
+        errorMessage: error.localizedDescription
+      )
+    }
   }
 
   private static func closeLastDirectory(in stack: inout [NodeBuilder]) {
@@ -223,6 +309,26 @@ enum FileScanner {
   }
 }
 
+private struct EntryReference: Sendable {
+  let ordinal: Int
+  let level: Int
+  let url: URL
+}
+
+private struct PreparedEntry: Sendable {
+  let ordinal: Int
+  let level: Int
+  let path: String
+  let name: String
+  let pathExtension: String
+  let isDirectory: Bool
+  let isPackage: Bool
+  let size: UInt64
+  let contentTypeIdentifier: String?
+  let contentTypeName: String?
+  let errorMessage: String?
+}
+
 private final class NodeBuilder {
   let path: String
   let name: String
@@ -266,9 +372,13 @@ private final class IssueLog {
   private(set) var issues: [ScanIssue] = []
 
   func record(path: String, error: Error) {
+    record(path: path, message: error.localizedDescription)
+  }
+
+  func record(path: String, message: String) {
     count += 1
     if issues.count < 500 {
-      issues.append(ScanIssue(path: path, message: error.localizedDescription))
+      issues.append(ScanIssue(path: path, message: message))
     }
   }
 }
@@ -283,7 +393,8 @@ private struct KindRegistry {
   ]
 
   mutating func kindID(
-    for contentType: UTType?,
+    contentTypeIdentifier: String?,
+    contentTypeName: String?,
     pathExtension: String,
     isDirectory: Bool,
     isPackage: Bool
@@ -291,12 +402,12 @@ private struct KindRegistry {
     if isDirectory && !isPackage { return FileKind.folderID }
 
     let normalizedExtension = pathExtension.lowercased()
-    let key = contentType?.identifier ?? "extension:\(normalizedExtension)"
+    let key = contentTypeIdentifier ?? "extension:\(normalizedExtension)"
     if let existing = idsByType[key] { return existing }
 
     let name: String
-    if let contentType, !contentType.identifier.hasPrefix("dyn.") {
-      name = contentType.localizedDescription ?? contentType.identifier
+    if let contentTypeIdentifier, !contentTypeIdentifier.hasPrefix("dyn.") {
+      name = contentTypeName ?? contentTypeIdentifier
     } else if normalizedExtension.isEmpty {
       return FileKind.documentID
     } else {
