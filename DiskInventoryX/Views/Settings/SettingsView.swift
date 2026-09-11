@@ -77,19 +77,11 @@ struct SettingsView: View {
 private struct TreeMapSettings: View {
   @AppStorage("cushionShading") private var cushionShading = true
   @AppStorage("showLabels") private var showLabels = false
-  @AppStorage("minimumRectangleSize") private var minimumRectangleSize = 2.0
 
   var body: some View {
     Form {
       Toggle("Cushion shading", isOn: $cushionShading)
       Toggle("Show file names", isOn: $showLabels)
-      LabeledContent("Minimum rectangle size") {
-        Slider(value: $minimumRectangleSize, in: 1...8, step: 1)
-          .frame(width: 220)
-        Text("\(minimumRectangleSize, specifier: "%.0f") px")
-          .monospacedDigit()
-          .frame(width: 42, alignment: .trailing)
-      }
     }
     .formStyle(.grouped)
     .padding()

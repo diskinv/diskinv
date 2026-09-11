@@ -113,8 +113,7 @@ final class FileScannerTests: XCTestCase {
     let rectangles = TreeMapLayout.layout(
       node: root,
       in: bounds,
-      showPackageContents: true,
-      minimumSize: 1
+      showPackageContents: true
     )
 
     XCTAssertEqual(rectangles.count, 3)
@@ -129,7 +128,7 @@ final class FileScannerTests: XCTestCase {
     }
   }
 
-  func testDenseTreeMapAggregatesTinyCellsAndCoversCanvas() {
+  func testDenseTreeMapUsesPixelAlignedRealLeaves() {
     let children = (0..<40).map { directoryIndex in
       let files = (0..<500).map { fileIndex in
         FileNode(
@@ -162,23 +161,27 @@ final class FileScannerTests: XCTestCase {
       node: root,
       in: bounds,
       showPackageContents: true,
-      minimumSize: 2
+      pixelScale: 2
     )
 
     let coveredArea = rectangles.reduce(0) { $0 + $1.rect.width * $1.rect.height }
-    XCTAssertTrue(rectangles.contains(where: \.isAggregate))
-    XCTAssertTrue(
-      Dictionary(grouping: rectangles.filter(\.isAggregate), by: { $0.node.id })
-        .values.contains { $0.count > 1 }
-    )
-    XCTAssertLessThan(rectangles.count, 6_000)
+    XCTAssertGreaterThan(rectangles.count, 10_000)
+    XCTAssertLessThan(rectangles.count, 20_000)
+    XCTAssertTrue(rectangles.allSatisfy { !$0.node.isDirectory })
+    XCTAssertEqual(Set(rectangles.map { $0.node.id }).count, rectangles.count)
     XCTAssertEqual(coveredArea, bounds.width * bounds.height, accuracy: 0.1)
     for rectangle in rectangles {
+      XCTAssertEqual(rectangle.rect.minX * 2, (rectangle.rect.minX * 2).rounded())
+      XCTAssertEqual(rectangle.rect.minY * 2, (rectangle.rect.minY * 2).rounded())
+      XCTAssertEqual(rectangle.rect.width * 2, (rectangle.rect.width * 2).rounded())
+      XCTAssertEqual(rectangle.rect.height * 2, (rectangle.rect.height * 2).rounded())
+    }
+    for rectangle in rectangles.enumerated() where rectangle.offset.isMultiple(of: 211) {
       let hit = TreeMapLayout.rectangle(
-        at: CGPoint(x: rectangle.rect.midX, y: rectangle.rect.midY),
+        at: CGPoint(x: rectangle.element.rect.midX, y: rectangle.element.rect.midY),
         in: rectangles
       )
-      XCTAssertEqual(hit?.rect, rectangle.rect)
+      XCTAssertEqual(hit?.node.id, rectangle.element.node.id)
     }
   }
 

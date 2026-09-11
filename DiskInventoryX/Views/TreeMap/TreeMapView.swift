@@ -3,9 +3,9 @@ import SwiftUI
 
 struct TreeMapView: View {
   @EnvironmentObject private var appState: AppState
+  @Environment(\.displayScale) private var displayScale
   @AppStorage("cushionShading") private var cushionShading = true
   @AppStorage("showLabels") private var showLabels = false
-  @AppStorage("minimumRectangleSize") private var minimumRectangleSize = 2.0
   @State private var hoveredRectangle: TreeMapRect?
   @State private var rectangles: [TreeMapRect] = []
   @State private var layoutSize: CGSize = .zero
@@ -16,10 +16,9 @@ struct TreeMapView: View {
     GeometryReader { geometry in
       let key = LayoutKey(
         revision: appState.treeRevision,
-        width: Int(geometry.size.width.rounded()),
-        height: Int(geometry.size.height.rounded()),
-        showsPackages: appState.showPackageContents,
-        minimumSize: Int(minimumRectangleSize)
+        width: Int((geometry.size.width * displayScale).rounded()),
+        height: Int((geometry.size.height * displayScale).rounded()),
+        showsPackages: appState.showPackageContents
       )
 
       Canvas { context, size in
@@ -57,13 +56,13 @@ struct TreeMapView: View {
         let root = root
         let size = geometry.size
         let showPackageContents = appState.showPackageContents
-        let minimumSize = CGFloat(minimumRectangleSize)
+        let pixelScale = displayScale
         let layoutTask = Task.detached(priority: .userInitiated) {
           TreeMapLayout.layout(
             node: root,
             in: CGRect(origin: .zero, size: size),
             showPackageContents: showPackageContents,
-            minimumSize: minimumSize
+            pixelScale: pixelScale
           )
         }
         let newRectangles = await withTaskCancellationHandler {
@@ -145,13 +144,16 @@ struct TreeMapView: View {
       context.fill(path, with: .color(base))
     }
 
-    context.stroke(
-      Path(rect.insetBy(dx: 0.25, dy: 0.25)),
-      with: .color(.black.opacity(0.38)),
-      lineWidth: 0.5
-    )
+    let pixel = 1 / max(1, displayScale)
+    if min(rect.width, rect.height) >= pixel * 3 {
+      context.stroke(
+        Path(rect.insetBy(dx: pixel / 2, dy: pixel / 2)),
+        with: .color(.black.opacity(0.38)),
+        lineWidth: pixel
+      )
+    }
 
-    if showLabels, !treeRect.isAggregate, rect.width > 52, rect.height > 18 {
+    if showLabels, rect.width > 52, rect.height > 18 {
       var labelContext = context
       labelContext.clip(to: path)
       labelContext.draw(
@@ -226,5 +228,4 @@ private struct LayoutKey: Hashable {
   let width: Int
   let height: Int
   let showsPackages: Bool
-  let minimumSize: Int
 }

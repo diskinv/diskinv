@@ -5,31 +5,41 @@ struct TreeMapRect: Sendable {
   let node: FileNode
   let rect: CGRect
   let depth: Int
-  let isAggregate: Bool
 }
 
 enum TreeMapLayout {
   private static let minimumAspectRatio = 0.4
-  private static let targetRectangleCount: CGFloat = 4_000
 
   static func layout(
     node: FileNode,
     in rect: CGRect,
     showPackageContents: Bool,
-    minimumSize: CGFloat = 2,
-    depth: Int = 0,
-    maximumDepth: Int = 30
+    pixelScale: CGFloat = 1
   ) -> [TreeMapRect] {
-    let area = max(0, rect.width) * max(0, rect.height)
-    let adaptiveMinimumSize = sqrt(area / targetRectangleCount)
-    return layoutNode(
+    let scale = max(1, pixelScale)
+    let minX = (rect.minX * scale).rounded()
+    let minY = (rect.minY * scale).rounded()
+    let maxX = (rect.maxX * scale).rounded()
+    let maxY = (rect.maxY * scale).rounded()
+    let pixelRectangles = layoutNode(
       node: node,
-      in: rect,
+      in: CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY),
       showPackageContents: showPackageContents,
-      minimumSize: max(minimumSize, adaptiveMinimumSize),
-      depth: depth,
-      maximumDepth: maximumDepth
+      depth: 0
     )
+    guard scale != 1 else { return pixelRectangles }
+    return pixelRectangles.map {
+      TreeMapRect(
+        node: $0.node,
+        rect: CGRect(
+          x: $0.rect.minX / scale,
+          y: $0.rect.minY / scale,
+          width: $0.rect.width / scale,
+          height: $0.rect.height / scale
+        ),
+        depth: $0.depth
+      )
+    }
   }
 
   static func rectangle(at point: CGPoint, in rectangles: [TreeMapRect]) -> TreeMapRect? {
@@ -40,16 +50,14 @@ enum TreeMapLayout {
     node: FileNode,
     in rect: CGRect,
     showPackageContents: Bool,
-    minimumSize: CGFloat,
-    depth: Int,
-    maximumDepth: Int
+    depth: Int
   ) -> [TreeMapRect] {
-    guard !Task.isCancelled, rect.width > 0, rect.height > 0 else { return [] }
+    guard !Task.isCancelled, rect.width >= 1, rect.height >= 1 else { return [] }
     let children = node.children.filter { $0.size > 0 }
     let isLeaf = !node.isDirectory || node.isPackage && !showPackageContents
 
-    guard !isLeaf, !children.isEmpty, depth < maximumDepth else {
-      return [TreeMapRect(node: node, rect: rect, depth: depth, isAggregate: false)]
+    guard !isLeaf, !children.isEmpty else {
+      return [TreeMapRect(node: node, rect: rect, depth: depth)]
     }
 
     let total = children.reduce(UInt64(0)) { $0.saturatingAdding($1.size) }
@@ -85,14 +93,15 @@ enum TreeMapLayout {
       guard !Task.isCancelled else { return [] }
       let proposedShortEnd = shortStart + CGFloat(row.height) * shortSide
       let shortEnd =
-        rowIndex == rows.count - 1 ? parentShortEnd : min(proposedShortEnd, parentShortEnd)
+        rowIndex == rows.count - 1
+        ? parentShortEnd : min(max(proposedShortEnd.rounded(), shortStart), parentShortEnd)
       var longStart = parentLongStart
-      var aggregateRect: CGRect?
 
       for (childIndex, child) in row.children.enumerated() {
         let proposedLongEnd = longStart + CGFloat(row.widths[childIndex]) * longSide
         let longEnd =
-          childIndex == row.children.count - 1 ? parentLongEnd : min(proposedLongEnd, parentLongEnd)
+          childIndex == row.children.count - 1
+          ? parentLongEnd : min(max(proposedLongEnd.rounded(), longStart), parentLongEnd)
         let childRect =
           horizontal
           ? CGRect(
@@ -100,29 +109,16 @@ enum TreeMapLayout {
           : CGRect(
             x: shortStart, y: longStart, width: shortEnd - shortStart, height: longEnd - longStart)
 
-        if childRect.width >= minimumSize, childRect.height >= minimumSize {
+        if childRect.width >= 1, childRect.height >= 1 {
           result.append(
             contentsOf: layoutNode(
               node: child,
               in: childRect,
               showPackageContents: showPackageContents,
-              minimumSize: minimumSize,
-              depth: depth + 1,
-              maximumDepth: maximumDepth
+              depth: depth + 1
             ))
-        } else if childRect.width > 0, childRect.height > 0 {
-          aggregateRect = aggregateRect.map { $0.union(childRect) } ?? childRect
         }
         longStart = longEnd
-      }
-      if let aggregateRect {
-        result.append(
-          TreeMapRect(
-            node: node,
-            rect: aggregateRect,
-            depth: depth + 1,
-            isAggregate: true
-          ))
       }
       shortStart = shortEnd
     }
