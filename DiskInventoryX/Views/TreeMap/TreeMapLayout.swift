@@ -97,11 +97,10 @@ enum TreeMapLayout {
             x: shortStart, y: longStart, width: shortEnd - shortStart, height: longEnd - longStart)
 
         if childRect.width >= minimumSize, childRect.height >= minimumSize {
-          let inset = child.isDirectory && !(child.isPackage && !showPackageContents) ? 0.5 : 0
           result.append(
             contentsOf: layoutNode(
               node: child,
-              in: childRect.insetBy(dx: inset, dy: inset),
+              in: childRect,
               showPackageContents: showPackageContents,
               minimumSize: minimumSize,
               depth: depth + 1,

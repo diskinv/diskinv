@@ -130,13 +130,23 @@ final class FileScannerTests: XCTestCase {
   }
 
   func testDenseTreeMapAggregatesTinyCellsAndCoversCanvas() {
-    let children = (0..<20_000).map { index in
-      FileNode(
-        path: "/\(index)",
-        name: "\(index)",
-        isDirectory: false,
-        size: 1,
-        kindID: FileKind.documentID
+    let children = (0..<40).map { directoryIndex in
+      let files = (0..<500).map { fileIndex in
+        FileNode(
+          path: "/\(directoryIndex)/\(fileIndex)",
+          name: "\(fileIndex)",
+          isDirectory: false,
+          size: 1,
+          kindID: FileKind.documentID
+        )
+      }
+      return FileNode(
+        path: "/\(directoryIndex)",
+        name: "\(directoryIndex)",
+        isDirectory: true,
+        size: UInt64(files.count),
+        kindID: FileKind.folderID,
+        children: files
       )
     }
     let root = FileNode(

@@ -115,7 +115,7 @@ struct TreeMapView: View {
   }
 
   private func draw(_ treeRect: TreeMapRect, in context: inout GraphicsContext) {
-    let rect = treeRect.rect.insetBy(dx: 0.35, dy: 0.35)
+    let rect = treeRect.rect
     guard rect.width > 0, rect.height > 0 else { return }
     let path = Path(rect)
     let base = appState.color(for: treeRect.node.kindID)
@@ -139,7 +139,11 @@ struct TreeMapView: View {
       context.fill(path, with: .color(base))
     }
 
-    context.stroke(path, with: .color(.black.opacity(0.45)), lineWidth: 0.6)
+    context.stroke(
+      Path(rect.insetBy(dx: 0.25, dy: 0.25)),
+      with: .color(.black.opacity(0.38)),
+      lineWidth: 0.5
+    )
 
     if showLabels, !treeRect.isAggregate, rect.width > 52, rect.height > 18 {
       var labelContext = context
