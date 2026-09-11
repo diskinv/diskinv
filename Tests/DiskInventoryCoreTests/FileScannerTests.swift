@@ -167,8 +167,19 @@ final class FileScannerTests: XCTestCase {
 
     let coveredArea = rectangles.reduce(0) { $0 + $1.rect.width * $1.rect.height }
     XCTAssertTrue(rectangles.contains(where: \.isAggregate))
+    XCTAssertTrue(
+      Dictionary(grouping: rectangles.filter(\.isAggregate), by: { $0.node.id })
+        .values.contains { $0.count > 1 }
+    )
     XCTAssertLessThan(rectangles.count, 6_000)
     XCTAssertEqual(coveredArea, bounds.width * bounds.height, accuracy: 0.1)
+    for rectangle in rectangles {
+      let hit = TreeMapLayout.rectangle(
+        at: CGPoint(x: rectangle.rect.midX, y: rectangle.rect.midY),
+        in: rectangles
+      )
+      XCTAssertEqual(hit?.rect, rectangle.rect)
+    }
   }
 
   func testSizeAdditionSaturates() {

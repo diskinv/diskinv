@@ -32,6 +32,10 @@ enum TreeMapLayout {
     )
   }
 
+  static func rectangle(at point: CGPoint, in rectangles: [TreeMapRect]) -> TreeMapRect? {
+    rectangles.last { $0.rect.contains(point) }
+  }
+
   private static func layoutNode(
     node: FileNode,
     in rect: CGRect,

@@ -6,7 +6,7 @@ struct TreeMapView: View {
   @AppStorage("cushionShading") private var cushionShading = true
   @AppStorage("showLabels") private var showLabels = false
   @AppStorage("minimumRectangleSize") private var minimumRectangleSize = 2.0
-  @State private var hoveredNode: FileNode?
+  @State private var hoveredRectangle: TreeMapRect?
   @State private var rectangles: [TreeMapRect] = []
   @State private var layoutSize: CGSize = .zero
 
@@ -42,8 +42,10 @@ struct TreeMapView: View {
       .gesture(tapGesture(in: geometry.size))
       .onContinuousHover { phase in
         switch phase {
-        case .active(let point): hoveredNode = node(at: point, in: geometry.size)
-        case .ended: hoveredNode = nil
+        case .active(let point):
+          updateHover(to: rectangle(at: point, in: geometry.size))
+        case .ended:
+          updateHover(to: nil)
         }
       }
       .task(id: key) {
@@ -72,6 +74,10 @@ struct TreeMapView: View {
         guard !Task.isCancelled else { return }
         rectangles = newRectangles
         layoutSize = size
+        updateHover(to: nil)
+      }
+      .onDisappear {
+        updateHover(to: nil)
       }
     }
     .accessibilityLabel("Disk usage treemap")
@@ -83,7 +89,7 @@ struct TreeMapView: View {
       .onEnded { value in
         switch value {
         case .first(let doubleTap):
-          guard let node = node(at: doubleTap.location, in: size) else { return }
+          guard let node = rectangle(at: doubleTap.location, in: size)?.node else { return }
           appState.selectedNode = node
           if node.isDirectory {
             appState.zoomIn()
@@ -95,7 +101,7 @@ struct TreeMapView: View {
             }
           }
         case .second(let singleTap):
-          appState.selectedNode = node(at: singleTap.location, in: size)
+          appState.selectedNode = rectangle(at: singleTap.location, in: size)?.node
         }
       }
   }
@@ -173,17 +179,24 @@ struct TreeMapView: View {
   }
 
   private func drawHover(in context: inout GraphicsContext) {
-    guard let hoveredNode,
-      let rectangle = rectangles.first(where: { $0.node.id == hoveredNode.id })
-    else { return }
+    guard let hoveredRectangle else { return }
     context.stroke(
-      Path(rectangle.rect.insetBy(dx: 1, dy: 1)),
+      Path(hoveredRectangle.rect),
       with: .color(.white.opacity(0.75)),
       lineWidth: 1.5
     )
   }
 
-  private func node(at point: CGPoint, in size: CGSize) -> FileNode? {
+  private func updateHover(to rectangle: TreeMapRect?) {
+    guard
+      hoveredRectangle?.node.id != rectangle?.node.id
+        || hoveredRectangle?.rect != rectangle?.rect
+    else { return }
+    hoveredRectangle = rectangle
+    appState.hoveredNode = rectangle?.node
+  }
+
+  private func rectangle(at point: CGPoint, in size: CGSize) -> TreeMapRect? {
     guard size.width > 0, size.height > 0, layoutSize.width > 0, layoutSize.height > 0 else {
       return nil
     }
@@ -191,7 +204,7 @@ struct TreeMapView: View {
       x: point.x * layoutSize.width / size.width,
       y: point.y * layoutSize.height / size.height
     )
-    return rectangles.last(where: { $0.rect.contains(layoutPoint) })?.node
+    return TreeMapLayout.rectangle(at: layoutPoint, in: rectangles)
   }
 
   private func cushionColors(for color: Color, depth: Int) -> (

@@ -164,7 +164,7 @@ private struct SelectionStatusBar: View {
 
   var body: some View {
     HStack(spacing: 10) {
-      if let node = appState.selectedNode {
+      if let node = appState.hoveredNode ?? appState.selectedNode {
         Text(node.path)
           .lineLimit(1)
           .truncationMode(.middle)

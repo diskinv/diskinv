@@ -6,6 +6,7 @@ final class AppState: ObservableObject {
   @Published private(set) var rootNode: FileNode?
   @Published private(set) var zoomedNode: FileNode?
   @Published var selectedNode: FileNode?
+  @Published var hoveredNode: FileNode?
   @Published private(set) var zoomStack: [FileNode] = []
 
   @Published private(set) var isScanning = false
@@ -105,6 +106,7 @@ final class AppState: ObservableObject {
     rootNode = nil
     zoomedNode = nil
     selectedNode = nil
+    hoveredNode = nil
     zoomStack = []
     selectedKindID = nil
     kindStatistics = []
