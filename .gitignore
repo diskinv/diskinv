@@ -1,6 +1,7 @@
 # Xcode build output
 build/
 DerivedData/
+.build/
 
 # Xcode per-user state
 *.xcodeproj/xcuserdata/

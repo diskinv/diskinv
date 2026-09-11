@@ -1,48 +1,39 @@
 # Disk Inventory Xs
 
-A macOS app that visualizes disk space usage with treemaps. This is Tjark Derlien's original Objective-C **Disk Inventory X** (1.4b2, 2022) brought forward to run natively on Apple Silicon and clean on modern Xcode / macOS.
+Disk Inventory Xs is a macOS 14 app for finding large files and folders. It shows a hierarchical file list beside a cushion-shaded treemap, with file-kind totals in a right inspector.
 
-The "s" is for Silicon.
+## Scan behavior
 
-## Install
+The scanner enumerates hidden entries and package contents. Metadata reads use a bounded parallel worker pool; the default setting of 0 uses all but one active CPU core. The package setting changes presentation only, so closing a package in the UI never removes its contents from the measured size. Symbolic links and Finder aliases appear as entries but are not followed.
 
-Grab the latest [release](https://github.com/diskinv/diskinv/releases/latest) — `DiskInventoryXs-<version>-arm64.zip`. Unzip, drag `Disk Inventory Xs.app` to `/Applications`, double-click. Releases are notarized and stapled, so no `xattr` workaround or right-click → Open.
+macOS can deny access to protected paths. The app counts these failures and lists the first 500 after the scan instead of presenting unreadable directories as empty. Grant Full Disk Access in System Settings when a complete volume scan requires it.
 
-Requirements: Apple Silicon Mac, macOS 10.13+.
+Logical size and allocated size are available. Allocated size is summed per path, so hard links and APFS clones can make the total larger than the volume's unique physical blocks. Volume free-space arithmetic clamps at zero.
 
-## Build from source
+## Test and build
 
-```sh
-src/BuildRelease.sh
-```
-
-That builds `TreeMapView.framework` from `treemap/`, builds the app, and produces a self-consistent ad-hoc-signed `.app` at `src/build/Release/Disk Inventory Xs.app` that launches locally without further setup.
-
-To produce a signed/notarizable build, point it at a Developer ID identity in your keychain:
+Run the scanner and treemap checks with Swift Package Manager:
 
 ```sh
-SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" src/BuildRelease.sh
+swift test
 ```
 
-See [`NOTARIZATION.md`](NOTARIZATION.md) for the notarytool + stapler recipe used to cut official releases.
+Build the macOS app from the command line:
 
-## Layout
+```sh
+DiskInventoryX/BuildRelease.sh
+```
 
-- `src/` — the Objective-C app (NSDocument-based, AppKit)
-- `treemap/` — the embedded `TreeMapView.framework`
-- `src/BuildRelease.sh` — single canonical build entry point (re-signs deeply, arm64-only)
+The ad hoc signed local build is written to `DiskInventoryX/build/Release/Disk Inventory Xs.app`. Set `SIGN_IDENTITY` to a Developer ID Application identity when producing a distributable build.
 
-Architectural notes live in [`CLAUDE.md`](CLAUDE.md).
+## Source layout
 
-## Disk Inventory Y (Swift rewrite)
+- `DiskInventoryX/App` owns window state, scanning, selection, and commands.
+- `DiskInventoryX/Models` contains immutable scan results.
+- `DiskInventoryX/Services/FileScanner.swift` contains the filesystem walk.
+- `DiskInventoryX/Views` contains the file list, treemap, file-kind inspector, and settings.
+- `Tests/DiskInventoryCoreTests` checks enumeration and treemap geometry without launching the app.
 
-A from-scratch SwiftUI rewrite lives in a sibling repository as **Disk Inventory Y**. Same idea, modern stack: `@Observable`, actor-isolated parallel scanning, Canvas-rendered treemap, structured concurrency. Targets macOS 14+. If you want the modern codebase, look there; this repo exists to keep the original Objective-C app alive and shipping.
+## Credits and license
 
-## Credits
-
-- **Tjark Derlien** — original author of Disk Inventory X (2003–2022)
-- **Mahmoud Lababidi** — Apple Silicon port, Xcode 26 warning cleanup, Hardened Runtime fix, notarized release pipeline (2026)
-
-## License
-
-GPL v3 — see source headers. Same license as the original.
+Tjark Derlien created Disk Inventory X. Disk Inventory Xs remains available under GPL v3; see `LICENSE`.

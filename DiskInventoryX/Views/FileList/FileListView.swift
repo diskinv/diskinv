@@ -1,157 +1,168 @@
-//
-//  FileListView.swift
-//  DiskInventoryX
-//
-//  Outline view showing file hierarchy
-//
-
+import AppKit
 import SwiftUI
 
 struct FileListView: View {
-    @EnvironmentObject private var appState: AppState
+  @EnvironmentObject private var appState: AppState
+  @State private var expandedNodes: Set<String> = []
 
-    var body: some View {
-        Group {
-            if let root = appState.displayRoot {
-                List(selection: $appState.selectedNode) {
-                    OutlineGroup(root.children, children: \.optionalChildren) { node in
-                        FileRow(node: node)
-                            .tag(node)
-                    }
-                }
-                .listStyle(.inset(alternatesRowBackgrounds: true))
-            } else {
-                ContentUnavailableView(
-                    "No Data",
-                    systemImage: "folder",
-                    description: Text("Open a folder to see its contents")
-                )
+  var body: some View {
+    VStack(spacing: 0) {
+      HStack {
+        Text(appState.selectedKindID == nil ? "name" : "matching files")
+        Spacer()
+        Text("size")
+          .frame(width: 78, alignment: .trailing)
+      }
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .padding(.horizontal, 10)
+      .padding(.vertical, 5)
+      .background(.bar)
+
+      Divider()
+
+      if let root = appState.displayRoot {
+        List(selection: $appState.selectedNode) {
+          if appState.selectedKindID == nil {
+            ForEach(root.children) { node in
+              FileNodeRow(node: node, expandedNodes: $expandedNodes)
             }
+          } else {
+            ForEach(appState.filteredNodes) { node in
+              FileRow(node: node, showsPath: true)
+                .tag(node)
+            }
+          }
         }
-        .navigationTitle("Files")
+        .listStyle(.inset(alternatesRowBackgrounds: true))
+      } else {
+        Color(nsColor: .textBackgroundColor)
+      }
     }
+    .frame(minWidth: 250, idealWidth: 300)
+  }
 }
 
-struct FileRow: View {
-    let node: FileNode
-    @EnvironmentObject private var appState: AppState
+private struct FileNodeRow: View {
+  @EnvironmentObject private var appState: AppState
+  let node: FileNode
+  @Binding var expandedNodes: Set<String>
 
-    var body: some View {
-        HStack(spacing: 8) {
-            // Icon
-            Image(nsImage: node.icon)
-                .resizable()
-                .frame(width: 16, height: 16)
+  private var canExpand: Bool {
+    node.isDirectory
+      && !node.children.isEmpty
+      && (!node.isPackage || appState.showPackageContents)
+  }
 
-            // Name
-            Text(node.name)
-                .lineLimit(1)
-                .truncationMode(.middle)
-
-            Spacer()
-
-            // Kind (for non-folders)
-            if !node.isDirectory {
-                Text(node.kindName)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-
-            // Size
-            Text(FileSizeFormatter.string(from: node.size))
-                .font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .frame(width: 70, alignment: .trailing)
-
-            // Size bar
-            SizeBar(
-                size: node.size,
-                maxSize: appState.displayRoot?.size ?? node.size,
-                color: appState.color(for: node.kindName)
-            )
-            .frame(width: 60)
+  private var expanded: Binding<Bool> {
+    Binding(
+      get: { expandedNodes.contains(node.id) },
+      set: { isExpanded in
+        if isExpanded {
+          expandedNodes.insert(node.id)
+        } else {
+          expandedNodes.remove(node.id)
         }
-        .padding(.vertical, 2)
-        .contextMenu {
-            Button("Show in Finder") {
-                NSWorkspace.shared.selectFile(node.url.path, inFileViewerRootedAtPath: "")
-            }
+      }
+    )
+  }
 
-            if node.isDirectory {
-                Button("Zoom Into") {
-                    appState.selectedNode = node
-                    appState.zoomIn()
-                }
-            }
-
-            Divider()
-
-            Button("Move to Trash", role: .destructive) {
-                moveToTrash(node)
-            }
-            .disabled(node.isSpecialItem)
+  var body: some View {
+    if canExpand {
+      DisclosureGroup(isExpanded: expanded) {
+        ForEach(node.children) { child in
+          FileNodeRow(node: child, expandedNodes: $expandedNodes)
         }
+      } label: {
+        FileRow(node: node)
+          .tag(node)
+      }
+    } else {
+      FileRow(node: node)
+        .tag(node)
     }
-
-    private func moveToTrash(_ node: FileNode) {
-        do {
-            try FileManager.default.trashItem(at: node.url, resultingItemURL: nil)
-            // Could notify appState to refresh
-        } catch {
-            // Handle error
-        }
-    }
+  }
 }
 
-struct SizeBar: View {
-    let size: UInt64
-    let maxSize: UInt64
-    let color: Color
+private struct FileRow: View {
+  @EnvironmentObject private var appState: AppState
+  let node: FileNode
+  var showsPath = false
 
-    var body: some View {
-        GeometryReader { geometry in
-            let fraction = maxSize > 0 ? CGFloat(size) / CGFloat(maxSize) : 0
+  var body: some View {
+    HStack(spacing: 6) {
+      FileIcon(node: node)
 
-            ZStack(alignment: .leading) {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.2))
-
-                Rectangle()
-                    .fill(color)
-                    .frame(width: geometry.size.width * fraction)
-            }
+      VStack(alignment: .leading, spacing: 1) {
+        Text(node.name)
+          .lineLimit(1)
+          .truncationMode(.middle)
+        if showsPath {
+          Text(node.path)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
         }
-        .frame(height: 8)
-        .clipShape(RoundedRectangle(cornerRadius: 2))
+      }
+
+      Spacer(minLength: 8)
+
+      Text(FileSizeFormatter.string(from: node.size))
+        .monospacedDigit()
+        .foregroundStyle(.secondary)
+        .frame(width: 78, alignment: .trailing)
     }
+    .contentShape(Rectangle())
+    .onTapGesture(count: 2) {
+      appState.selectedNode = node
+      appState.zoomIn()
+    }
+    .contextMenu {
+      if let url = node.url {
+        Button("Open") {
+          NSWorkspace.shared.open(url)
+        }
+        Button("Reveal in Finder") {
+          NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
+
+        if node.isDirectory {
+          Button("Zoom In") {
+            appState.selectedNode = node
+            appState.zoomIn()
+          }
+          .disabled(node.isPackage && !appState.showPackageContents)
+        }
+
+        Divider()
+
+        Button("Move to Trash", role: .destructive) {
+          appState.trashCandidate = node
+        }
+        .disabled(node.id == appState.rootNode?.id)
+      }
+    }
+    .help(node.path)
+  }
 }
 
-// MARK: - FileNode Extension
+private struct FileIcon: View {
+  let node: FileNode
 
-extension FileNode {
-    /// Returns children for OutlineGroup, or nil if no children
-    var optionalChildren: [FileNode]? {
-        children.isEmpty ? nil : children
+  var body: some View {
+    Group {
+      switch node.type {
+      case .freeSpace:
+        Image(systemName: "externaldrive")
+      case .otherSpace:
+        Image(systemName: "questionmark.folder")
+      case .regular:
+        Image(nsImage: NSWorkspace.shared.icon(forFile: node.path))
+          .resizable()
+      }
     }
-}
-
-#Preview {
-    let appState = AppState()
-
-    let root = FileNode(url: URL(fileURLWithPath: "/"), name: "Root", isDirectory: true, size: 1000)
-    let folder = FileNode(url: URL(fileURLWithPath: "/folder"), name: "Documents", isDirectory: true, size: 600)
-    let file1 = FileNode(url: URL(fileURLWithPath: "/folder/a.txt"), name: "readme.txt", size: 100)
-    let file2 = FileNode(url: URL(fileURLWithPath: "/folder/b.pdf"), name: "report.pdf", size: 500)
-    folder.children = [file1, file2]
-    let file3 = FileNode(url: URL(fileURLWithPath: "/c.app"), name: "App.app", isPackage: true, size: 400)
-    root.children = [folder, file3]
-
-    return FileListView()
-        .environmentObject(appState)
-        .frame(width: 400, height: 300)
-        .onAppear {
-            appState.rootNode = root
-        }
+    .frame(width: 16, height: 16)
+    .accessibilityHidden(true)
+  }
 }

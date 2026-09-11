@@ -1,85 +1,102 @@
-//
-//  SidebarView.swift
-//  DiskInventoryX
-//
-//  Sidebar showing file kind statistics
-//
-
 import SwiftUI
 
 struct SidebarView: View {
-    @EnvironmentObject private var appState: AppState
+  @EnvironmentObject private var appState: AppState
 
-    var body: some View {
-        List(selection: $appState.selectedKind) {
-            Section("File Types") {
-                if appState.kindStatistics.isEmpty {
-                    Text("No data")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(appState.kindStatistics) { stat in
-                        FileKindRow(statistic: stat)
-                            .tag(stat.kindName)
-                    }
-                }
-            }
+  var body: some View {
+    VStack(spacing: 0) {
+      HStack(spacing: 6) {
+        Text("color")
+          .frame(width: 34, alignment: .leading)
+        Text("kind")
+        Spacer()
+        Text("size")
+          .frame(width: 72, alignment: .trailing)
+        Text("files")
+          .frame(width: 48, alignment: .trailing)
+      }
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .padding(.horizontal, 8)
+      .padding(.vertical, 5)
+      .background(.bar)
 
-            if let root = appState.rootNode {
-                Section("Summary") {
-                    LabeledContent("Total Size") {
-                        Text(FileSizeFormatter.string(from: root.size))
-                            .monospacedDigit()
-                    }
+      Divider()
 
-                    LabeledContent("File Types") {
-                        Text("\(appState.kindStatistics.count)")
-                            .monospacedDigit()
-                    }
-
-                    let totalFiles = appState.kindStatistics.reduce(0) { $0 + $1.count }
-                    LabeledContent("Files") {
-                        Text("\(totalFiles)")
-                            .monospacedDigit()
-                    }
-                }
-            }
+      List(selection: $appState.selectedKindID) {
+        ForEach(appState.kindStatistics) { statistic in
+          FileKindRow(statistic: statistic)
+            .tag(statistic.kindID)
         }
-        .listStyle(.sidebar)
-        .navigationTitle("File Types")
+      }
+      .listStyle(.inset(alternatesRowBackgrounds: true))
+
+      Divider()
+
+      VStack(alignment: .leading, spacing: 6) {
+        HStack {
+          Button("All files") {
+            appState.selectedKindID = nil
+          }
+          .buttonStyle(.link)
+          .disabled(appState.selectedKindID == nil)
+
+          Spacer()
+
+          if appState.scanIssueCount > 0 {
+            Button("\(appState.scanIssueCount) unreadable") {
+              appState.showsScanIssues = true
+            }
+            .buttonStyle(.link)
+            .foregroundStyle(.orange)
+          }
+        }
+
+        if let root = appState.rootNode {
+          Text(
+            "\(appState.filesScanned.formatted()) files, \(appState.foldersScanned.formatted()) folders"
+          )
+          Text(FileSizeFormatter.string(from: root.size))
+            .monospacedDigit()
+        }
+      }
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .padding(8)
+      .background(.bar)
     }
+    .frame(minWidth: 260, idealWidth: 300)
+  }
 }
 
-struct FileKindRow: View {
-    let statistic: FileKindStatistic
+private struct FileKindRow: View {
+  @EnvironmentObject private var appState: AppState
+  let statistic: FileKindStatistic
 
-    var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(statistic.color)
-                .frame(width: 12, height: 12)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(statistic.kindName)
-                    .lineLimit(1)
-
-                Text("\(statistic.formattedCount) files")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Text(statistic.formattedSize)
-                .font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
+  var body: some View {
+    HStack(spacing: 6) {
+      RoundedRectangle(cornerRadius: 2)
+        .fill(appState.color(for: statistic.kindID))
+        .frame(width: 34, height: 14)
+        .overlay {
+          RoundedRectangle(cornerRadius: 2)
+            .stroke(.black.opacity(0.2), lineWidth: 0.5)
         }
-        .padding(.vertical, 2)
-    }
-}
 
-#Preview {
-    SidebarView()
-        .environmentObject(AppState())
-        .frame(width: 250, height: 400)
+      Text(appState.kindName(for: statistic.kindID))
+        .lineLimit(1)
+
+      Spacer(minLength: 6)
+
+      Text(FileSizeFormatter.string(from: statistic.totalSize))
+        .monospacedDigit()
+        .foregroundStyle(.secondary)
+        .frame(width: 72, alignment: .trailing)
+
+      Text(statistic.count.formatted())
+        .monospacedDigit()
+        .foregroundStyle(.secondary)
+        .frame(width: 48, alignment: .trailing)
+    }
+  }
 }

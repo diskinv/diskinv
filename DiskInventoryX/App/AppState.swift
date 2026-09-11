@@ -1,249 +1,302 @@
-//
-//  AppState.swift
-//  DiskInventoryX
-//
-//  Global application state management
-//
-
+import AppKit
 import SwiftUI
-import Combine
 
 @MainActor
-class AppState: ObservableObject {
-    // MARK: - Published Properties
+final class AppState: ObservableObject {
+  @Published private(set) var rootNode: FileNode?
+  @Published private(set) var zoomedNode: FileNode?
+  @Published var selectedNode: FileNode?
+  @Published var hoveredNode: FileNode?
+  @Published private(set) var zoomStack: [FileNode] = []
 
-    @Published var rootNode: FileNode?
-    @Published var zoomedNode: FileNode?
-    @Published var selectedNode: FileNode?
-    @Published var zoomStack: [FileNode] = []
+  @Published private(set) var isScanning = false
+  @Published private(set) var scanProgress: ScanProgress?
+  @Published var errorMessage: String?
 
-    @Published var isScanning = false
-    @Published var scanProgress: ScanProgress?
-    @Published var errorMessage: String?
+  @Published private(set) var kindStatistics: [FileKindStatistic] = []
+  @Published var selectedKindID: UInt32? {
+    didSet { rebuildFilteredNodes() }
+  }
+  @Published private(set) var filteredNodes: [FileNode] = []
+  @Published var showsScanIssues = false
+  @Published var trashCandidate: FileNode?
+  @Published private(set) var treeRevision = UUID()
 
-    @Published var kindStatistics: [FileKindStatistic] = []
-    @Published var selectedKind: String?
+  @AppStorage("sizeMode") var sizeModeRaw = FileSizeMode.logical.rawValue
+  @AppStorage("scanWorkerCount") var scanWorkerCount = 0
+  @AppStorage("showPackageContents") var showPackageContents = false {
+    didSet { applyPresentationOptions() }
+  }
+  @AppStorage("showFreeSpace") var showFreeSpace = true {
+    didSet { applyPresentationOptions() }
+  }
+  @AppStorage("showOtherSpace") var showOtherSpace = true {
+    didSet { applyPresentationOptions() }
+  }
 
-    // MARK: - Settings
+  private var result: ScanResult?
+  private var kindsByID: [UInt32: FileKind] = [:]
+  private var scanTask: Task<Void, Never>?
+  private var filterTask: Task<Void, Never>?
+  private var scanToken = UUID()
+  private var filterToken = UUID()
 
-    @AppStorage("showPhysicalSize") var showPhysicalSize = false
-    @AppStorage("showPackageContents") var showPackageContents = false
-    @AppStorage("ignoreCreatorCodes") var ignoreCreatorCodes = true
-    @AppStorage("showFreeSpace") var showFreeSpace = true
-    @AppStorage("showOtherSpace") var showOtherSpace = true
+  var displayRoot: FileNode? {
+    zoomedNode ?? rootNode
+  }
 
-    // MARK: - Private
+  var sizeMode: FileSizeMode {
+    get { FileSizeMode(rawValue: sizeModeRaw) ?? .logical }
+    set { sizeModeRaw = newValue.rawValue }
+  }
 
-    private var scanner: FileScanner?
-    private var colorAssigner = FileKindColorAssigner()
+  var scannedSizeMode: FileSizeMode? {
+    result?.sizeMode
+  }
 
-    // MARK: - Computed Properties
+  var effectiveScanWorkerCount: Int {
+    ScanOptions.resolveWorkerCount(
+      scanWorkerCount,
+      activeProcessorCount: ProcessInfo.processInfo.activeProcessorCount
+    )
+  }
 
-    var displayRoot: FileNode? {
-        zoomedNode ?? rootNode
+  var scanIssues: [ScanIssue] {
+    result?.issues ?? []
+  }
+
+  var scanIssueCount: Int {
+    result?.issueCount ?? 0
+  }
+
+  var filesScanned: Int {
+    result?.filesScanned ?? 0
+  }
+
+  var foldersScanned: Int {
+    result?.foldersScanned ?? 0
+  }
+
+  func showOpenPanel() {
+    let panel = NSOpenPanel()
+    panel.canChooseFiles = false
+    panel.canChooseDirectories = true
+    panel.allowsMultipleSelection = false
+    panel.message = "Select a folder to analyze"
+    panel.prompt = "Scan"
+
+    if panel.runModal() == .OK, let url = panel.url {
+      startScan(url: url)
     }
+  }
 
-    // MARK: - Actions
+  func startScan(url: URL) {
+    cancelScan()
 
-    func showOpenPanel() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.message = "Select a folder to analyze disk usage"
-        panel.prompt = "Analyze"
+    let token = UUID()
+    scanToken = token
+    isScanning = true
+    scanProgress = ScanProgress(
+      currentFolder: url.lastPathComponent,
+      filesScanned: 0,
+      foldersScanned: 1
+    )
+    errorMessage = nil
+    result = nil
+    rootNode = nil
+    zoomedNode = nil
+    selectedNode = nil
+    hoveredNode = nil
+    zoomStack = []
+    selectedKindID = nil
+    kindStatistics = []
+    filteredNodes = []
 
-        if panel.runModal() == .OK, let url = panel.url {
-            Task {
-                await scan(url: url)
-            }
+    let options = ScanOptions(sizeMode: sizeMode, workerCount: scanWorkerCount)
+    scanTask = Task.detached(priority: .userInitiated) { [weak self] in
+      guard let self else { return }
+      do {
+        let result = try await FileScanner.scan(url: url, options: options) { progress in
+          Task { @MainActor in
+            guard self.scanToken == token else { return }
+            self.scanProgress = progress
+          }
         }
+        await self.finishScan(result, token: token)
+      } catch is CancellationError {
+        await self.finishCancellation(token: token)
+      } catch {
+        await self.finishScanError(error, token: token)
+      }
+    }
+  }
+
+  func cancelScan() {
+    scanToken = UUID()
+    scanTask?.cancel()
+    scanTask = nil
+    isScanning = false
+    scanProgress = nil
+  }
+
+  func refresh() {
+    guard let path = result?.root.path else { return }
+    startScan(url: URL(fileURLWithPath: path))
+  }
+
+  func zoomIn() {
+    guard let selectedNode,
+      selectedNode.isDirectory,
+      !selectedNode.isPackage || showPackageContents
+    else { return }
+
+    zoomStack.append(zoomedNode ?? rootNode ?? selectedNode)
+    zoomedNode = selectedNode
+    rebuildFilteredNodes()
+  }
+
+  func zoomOut() {
+    guard let previous = zoomStack.popLast() else { return }
+    zoomedNode = previous.id == rootNode?.id ? nil : previous
+    rebuildFilteredNodes()
+  }
+
+  func zoomToRoot() {
+    zoomedNode = nil
+    zoomStack = []
+    rebuildFilteredNodes()
+  }
+
+  func kindName(for id: UInt32) -> String {
+    kindsByID[id]?.name ?? "Unknown"
+  }
+
+  func color(for kindID: UInt32) -> Color {
+    FileKindColorAssigner.color(for: kindName(for: kindID))
+  }
+
+  func moveToTrash(_ node: FileNode) {
+    guard let url = node.url, node.id != result?.root.id else { return }
+    do {
+      try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+      refresh()
+    } catch {
+      errorMessage = "Could not move \"\(node.name)\" to the Trash. \(error.localizedDescription)"
+    }
+  }
+
+  func confirmTrash() {
+    guard let trashCandidate else { return }
+    self.trashCandidate = nil
+    moveToTrash(trashCandidate)
+  }
+
+  private func finishScan(_ newResult: ScanResult, token: UUID) {
+    guard scanToken == token else { return }
+    result = newResult
+    kindsByID = Dictionary(uniqueKeysWithValues: newResult.kinds.map { ($0.id, $0) })
+    isScanning = false
+    scanProgress = nil
+    scanTask = nil
+    applyPresentationOptions()
+  }
+
+  private func finishCancellation(token: UUID) {
+    guard scanToken == token else { return }
+    isScanning = false
+    scanProgress = nil
+    scanTask = nil
+  }
+
+  private func finishScanError(_ error: Error, token: UUID) {
+    guard scanToken == token else { return }
+    isScanning = false
+    scanProgress = nil
+    scanTask = nil
+    errorMessage = error.localizedDescription
+  }
+
+  private func applyPresentationOptions() {
+    guard let result else { return }
+    let priorSelectedID = selectedNode?.id
+    let priorZoomedID = zoomedNode?.id
+    var children = result.root.children
+    var statistics =
+      showPackageContents
+      ? result.expandedStatistics
+      : result.collapsedPackageStatistics
+
+    if let volume = result.volumeSpace {
+      let used = volume.total > volume.available ? volume.total - volume.available : 0
+      let other = used > result.root.size ? used - result.root.size : 0
+
+      if showOtherSpace, other > 0 {
+        children.append(
+          FileNode(
+            id: result.root.id + "\u{0}other-space",
+            path: result.root.path,
+            name: "Other Space",
+            isDirectory: false,
+            size: other,
+            kindID: FileKind.otherSpaceID,
+            type: .otherSpace
+          ))
+        statistics.append(
+          FileKindStatistic(
+            kindID: FileKind.otherSpaceID,
+            count: 1,
+            totalSize: other
+          ))
+      }
+
+      if showFreeSpace, volume.available > 0 {
+        children.append(
+          FileNode(
+            id: result.root.id + "\u{0}free-space",
+            path: result.root.path,
+            name: "Free Space",
+            isDirectory: false,
+            size: volume.available,
+            kindID: FileKind.freeSpaceID,
+            type: .freeSpace
+          ))
+        statistics.append(
+          FileKindStatistic(
+            kindID: FileKind.freeSpaceID,
+            count: 1,
+            totalSize: volume.available
+          ))
+      }
     }
 
-    func scan(url: URL) async {
-        // Cancel any existing scan
-        await scanner?.cancel()
+    rootNode = result.root.replacingChildren(children)
+    treeRevision = UUID()
+    kindStatistics = statistics.sorted { $0.totalSize > $1.totalSize }
+    selectedNode = priorSelectedID.flatMap { rootNode?.node(withID: $0) }
+    zoomedNode = priorZoomedID.flatMap { rootNode?.node(withID: $0) }
+    rebuildFilteredNodes()
+  }
 
-        isScanning = true
-        scanProgress = ScanProgress(currentFolder: url.lastPathComponent, filesScanned: 0, foldersScanned: 0)
-        errorMessage = nil
-        rootNode = nil
-        zoomedNode = nil
-        zoomStack = []
-        selectedNode = nil
-        kindStatistics = []
-
-        let newScanner = FileScanner()
-        scanner = newScanner
-
-        do {
-            let root = try await newScanner.scan(
-                url: url,
-                showPackageContents: showPackageContents,
-                usePhysicalSize: showPhysicalSize
-            ) { [weak self] folder, files, folders in
-                Task { @MainActor in
-                    self?.scanProgress = ScanProgress(
-                        currentFolder: folder,
-                        filesScanned: files,
-                        foldersScanned: folders
-                    )
-                }
-            }
-
-            rootNode = root
-            calculateStatistics()
-
-            // Add free space and other space items if scanning a volume root
-            if showFreeSpace || showOtherSpace {
-                await addVolumeSpaceItems(for: url)
-            }
-
-        } catch is CancellationError {
-            // Scan was cancelled, ignore
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-
-        isScanning = false
-        scanProgress = nil
+  private func rebuildFilteredNodes() {
+    filterTask?.cancel()
+    guard let selectedKindID, let root = displayRoot else {
+      filteredNodes = []
+      return
     }
 
-    func refresh() async {
-        guard let root = rootNode else { return }
-        await scan(url: root.url)
+    let token = UUID()
+    filterToken = token
+    let showPackageContents = showPackageContents
+    filterTask = Task.detached(priority: .userInitiated) { [weak self] in
+      let nodes = root.visibleEntries(
+        showPackageContents: showPackageContents,
+        kindID: selectedKindID
+      )
+      guard !Task.isCancelled else { return }
+      await MainActor.run {
+        guard self?.filterToken == token else { return }
+        self?.filteredNodes = nodes
+      }
     }
-
-    func zoomIn() {
-        guard let selected = selectedNode, selected.isDirectory else { return }
-
-        if let current = zoomedNode {
-            zoomStack.append(current)
-        } else if let root = rootNode {
-            zoomStack.append(root)
-        }
-
-        zoomedNode = selected
-    }
-
-    func zoomOut() {
-        guard !zoomStack.isEmpty else { return }
-        zoomedNode = zoomStack.removeLast()
-
-        if zoomedNode === rootNode {
-            zoomedNode = nil
-        }
-    }
-
-    func zoomToRoot() {
-        zoomedNode = nil
-        zoomStack = []
-    }
-
-    func color(for kindName: String) -> Color {
-        colorAssigner.color(for: kindName)
-    }
-
-    // MARK: - Private Methods
-
-    private func calculateStatistics() {
-        guard let root = rootNode else {
-            kindStatistics = []
-            return
-        }
-
-        var stats: [String: (count: Int, size: UInt64)] = [:]
-
-        func collect(_ node: FileNode) {
-            if !node.isDirectory {
-                let kind = node.kindName
-                var stat = stats[kind] ?? (count: 0, size: 0)
-                stat.count += 1
-                stat.size += node.size
-                stats[kind] = stat
-            }
-
-            for child in node.children {
-                collect(child)
-            }
-        }
-
-        collect(root)
-
-        kindStatistics = stats.map { kind, stat in
-            FileKindStatistic(
-                kindName: kind,
-                count: stat.count,
-                totalSize: stat.size,
-                color: colorAssigner.color(for: kind)
-            )
-        }.sorted { $0.totalSize > $1.totalSize }
-    }
-
-    private func addVolumeSpaceItems(for url: URL) async {
-        guard let root = rootNode else { return }
-
-        do {
-            // Only add volume space items when scanning a volume root
-            let resourceValues = try url.resourceValues(forKeys: [
-                .volumeTotalCapacityKey,
-                .volumeAvailableCapacityKey,
-                .isVolumeKey
-            ])
-
-            // Check if this is actually a volume root (like / or /Volumes/SomeDisk)
-            let isVolumeRoot = resourceValues.isVolume ?? false
-            let parentPath = url.deletingLastPathComponent().path
-            let isVolumeMountPoint = parentPath == "/Volumes" || url.path == "/"
-
-            guard isVolumeRoot || isVolumeMountPoint else {
-                return // Not a volume root, don't add space items
-            }
-
-            guard let totalCapacity = resourceValues.volumeTotalCapacity,
-                  let availableCapacity = resourceValues.volumeAvailableCapacity else {
-                return
-            }
-
-            let scannedSize = root.size
-            let totalSize = UInt64(totalCapacity)
-            let freeSize = UInt64(availableCapacity)
-            let otherSize = totalSize - freeSize - scannedSize
-
-            if showOtherSpace && otherSize > 0 {
-                let otherItem = FileNode(
-                    url: url.appendingPathComponent("<Other Space>"),
-                    name: "Other Space",
-                    isDirectory: false,
-                    isPackage: false,
-                    size: otherSize,
-                    type: .otherSpace
-                )
-                root.children.append(otherItem)
-            }
-
-            if showFreeSpace && freeSize > 0 {
-                let freeItem = FileNode(
-                    url: url.appendingPathComponent("<Free Space>"),
-                    name: "Free Space",
-                    isDirectory: false,
-                    isPackage: false,
-                    size: freeSize,
-                    type: .freeSpace
-                )
-                root.children.append(freeItem)
-            }
-
-        } catch {
-            // Ignore volume info errors
-        }
-    }
-}
-
-// MARK: - Supporting Types
-
-struct ScanProgress {
-    let currentFolder: String
-    let filesScanned: Int
-    let foldersScanned: Int
+  }
 }

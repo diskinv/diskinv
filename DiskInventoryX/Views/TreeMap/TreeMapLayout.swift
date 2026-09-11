@@ -1,216 +1,156 @@
-//
-//  TreeMapLayout.swift
-//  DiskInventoryX
-//
-//  TreeMap layout algorithm - ported from original TMVItem.m
-//  Uses row-based layout with minProportion constraint
-//
+import CoreGraphics
+import Foundation
 
-import SwiftUI
-
-struct TreeMapRect {
-    let node: FileNode
-    var rect: CGRect
-    let color: Color
-    let depth: Int  // Nesting depth for cushion shading
+struct TreeMapRect: Sendable {
+  let node: FileNode
+  let rect: CGRect
+  let depth: Int
 }
 
 enum TreeMapLayout {
+  private static let minimumAspectRatio = 0.4
 
-    /// Minimum aspect ratio for rectangles (prevents very thin rectangles)
-    private static let minProportion: Double = 0.4
+  static func layout(
+    node: FileNode,
+    in rect: CGRect,
+    showPackageContents: Bool,
+    pixelScale: CGFloat = 1
+  ) -> [TreeMapRect] {
+    let scale = max(1, pixelScale)
+    let minX = (rect.minX * scale).rounded()
+    let minY = (rect.minY * scale).rounded()
+    let maxX = (rect.maxX * scale).rounded()
+    let maxY = (rect.maxY * scale).rounded()
+    let pixelRectangles = layoutNode(
+      node: node,
+      in: CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY),
+      showPackageContents: showPackageContents,
+      depth: 0
+    )
+    guard scale != 1 else { return pixelRectangles }
+    return pixelRectangles.map {
+      TreeMapRect(
+        node: $0.node,
+        rect: CGRect(
+          x: $0.rect.minX / scale,
+          y: $0.rect.minY / scale,
+          width: $0.rect.width / scale,
+          height: $0.rect.height / scale
+        ),
+        depth: $0.depth
+      )
+    }
+  }
 
-    /// Calculates treemap layout for the given node and its children
-    static func layout(
-        node: FileNode,
-        rect: CGRect,
-        colorProvider: (String) -> Color,
-        depth: Int = 0,
-        maxDepth: Int = 8
-    ) -> [TreeMapRect] {
-        var results: [TreeMapRect] = []
+  static func rectangle(at point: CGPoint, in rectangles: [TreeMapRect]) -> TreeMapRect? {
+    rectangles.last { $0.rect.contains(point) }
+  }
 
-        let children = node.children.filter { $0.size > 0 }
+  private static func layoutNode(
+    node: FileNode,
+    in rect: CGRect,
+    showPackageContents: Bool,
+    depth: Int
+  ) -> [TreeMapRect] {
+    guard !Task.isCancelled, rect.width >= 1, rect.height >= 1 else { return [] }
+    let children = node.children.filter { $0.size > 0 }
+    let isLeaf = !node.isDirectory || node.isPackage && !showPackageContents
 
-        // If no children or at max depth, this is a leaf
-        guard !children.isEmpty, depth < maxDepth else {
-            if rect.width >= 1 && rect.height >= 1 {
-                results.append(TreeMapRect(
-                    node: node,
-                    rect: rect,
-                    color: colorProvider(node.kindName),
-                    depth: depth
-                ))
-            }
-            return results
-        }
-
-        // Sort children by size (largest first) - critical for the algorithm
-        let sorted = children.sorted { $0.size > $1.size }
-        let totalWeight = Double(node.size)
-
-        guard totalWeight > 0 else { return results }
-
-        // Determine if rows should be horizontal or vertical
-        let horizontal = rect.width >= rect.height
-
-        // Calculate normalized width (aspect ratio)
-        let width: Double
-        if horizontal {
-            width = rect.height > 0 ? Double(rect.width) / Double(rect.height) : 1.0
-        } else {
-            width = rect.width > 0 ? Double(rect.height) / Double(rect.width) : 1.0
-        }
-
-        // Arrange children into rows
-        var rows: [(height: Double, children: [(node: FileNode, width: Double)])] = []
-        var childIndex = 0
-
-        while childIndex < sorted.count {
-            let (rowHeight, childWidths, childsUsed) = calculateRow(
-                children: sorted,
-                startIndex: childIndex,
-                rowWidth: width,
-                totalWeight: totalWeight
-            )
-
-            if childsUsed == 0 { break }
-
-            var rowChildren: [(node: FileNode, width: Double)] = []
-            for i in 0..<childsUsed {
-                rowChildren.append((sorted[childIndex + i], childWidths[i]))
-            }
-
-            rows.append((rowHeight, rowChildren))
-            childIndex += childsUsed
-        }
-
-        // Layout the rows
-        let parentWidth = horizontal ? rect.width : rect.height
-        let parentHeight = horizontal ? rect.height : rect.width
-        let parentLeft = horizontal ? rect.minX : rect.minY
-        let parentTop = horizontal ? rect.minY : rect.minX
-        let parentRight = horizontal ? rect.maxX : rect.maxY
-        let parentBottom = horizontal ? rect.maxY : rect.maxX
-
-        var top = parentTop
-
-        for (rowIndex, row) in rows.enumerated() {
-            var bottom = top + CGFloat(row.height) * parentHeight
-
-            // Last row: snap to parent bottom to avoid rounding errors
-            if bottom > parentBottom || rowIndex == rows.count - 1 {
-                bottom = parentBottom
-            }
-
-            var left = parentLeft
-
-            for (colIndex, child) in row.children.enumerated() {
-                var right = left + CGFloat(child.width) * parentWidth
-
-                // Last column: snap to parent right
-                if right > parentRight || colIndex == row.children.count - 1 {
-                    right = parentRight
-                }
-
-                let childRect: CGRect
-                if horizontal {
-                    childRect = CGRect(x: left, y: top, width: right - left, height: bottom - top)
-                } else {
-                    childRect = CGRect(x: top, y: left, width: bottom - top, height: right - left)
-                }
-
-                // Skip very small rectangles
-                if childRect.width >= 2 && childRect.height >= 2 {
-                    // Recursively layout children if this is a directory
-                    if child.node.isDirectory && !child.node.children.isEmpty {
-                        let childRects = layout(
-                            node: child.node,
-                            rect: childRect.insetBy(dx: 1, dy: 1),
-                            colorProvider: colorProvider,
-                            depth: depth + 1,
-                            maxDepth: maxDepth
-                        )
-                        results.append(contentsOf: childRects)
-                    } else {
-                        results.append(TreeMapRect(
-                            node: child.node,
-                            rect: childRect,
-                            color: colorProvider(child.node.kindName),
-                            depth: depth + 1
-                        ))
-                    }
-                }
-
-                left = right
-            }
-
-            top = bottom
-        }
-
-        return results
+    guard !isLeaf, !children.isEmpty else {
+      return [TreeMapRect(node: node, rect: rect, depth: depth)]
     }
 
-    /// Calculate a single row of children
-    /// Returns: (rowHeight as fraction, childWidths as fractions, number of children used)
-    private static func calculateRow(
-        children: [FileNode],
-        startIndex: Int,
-        rowWidth: Double,
-        totalWeight: Double
-    ) -> (Double, [Double], Int) {
+    let total = children.reduce(UInt64(0)) { $0.saturatingAdding($1.size) }
+    guard total > 0 else { return [] }
 
-        var sizeUsed: Double = 0
-        var rowHeight: Double = 0
-        var childWidths: [Double] = []
-        var childsUsed = 0
+    let horizontal = rect.width >= rect.height
+    let longSide = horizontal ? rect.width : rect.height
+    let shortSide = horizontal ? rect.height : rect.width
+    let normalizedWidth = shortSide > 0 ? Double(longSide / shortSide) : 1
+    var rows: [(height: Double, children: ArraySlice<FileNode>, widths: [Double])] = []
+    var index = 0
 
-        for i in startIndex..<children.count {
-            let childSize = Double(children[i].size)
-
-            // Skip zero-size children (they'll be added at the end)
-            if childSize == 0 {
-                if i > startIndex {
-                    break
-                }
-                continue
-            }
-
-            sizeUsed += childSize
-            let virtualRowHeight = sizeUsed / totalWeight
-
-            // Rectangle(totalWeight) = width * 1.0
-            // Rectangle(childSize) = childWidth * virtualRowHeight
-            // childWidth = childSize / totalWeight * rowWidth / virtualRowHeight
-            let childWidth = childSize / totalWeight * rowWidth / virtualRowHeight
-
-            // Stop if rectangle would be too thin
-            if childWidth / virtualRowHeight < minProportion {
-                if i > startIndex {
-                    break
-                }
-                // First child - must include it
-            }
-
-            rowHeight = virtualRowHeight
-            childsUsed = i - startIndex + 1
-        }
-
-        // Add any remaining zero-size children
-        var i = startIndex + childsUsed
-        while i < children.count && children[i].size == 0 {
-            childsUsed += 1
-            i += 1
-        }
-
-        // Calculate final child widths
-        let rowSize = totalWeight * rowHeight
-        for j in 0..<childsUsed {
-            let childSize = Double(children[startIndex + j].size)
-            let cw = rowSize > 0 ? childSize / rowSize : 1.0 / Double(childsUsed)
-            childWidths.append(cw)
-        }
-
-        return (rowHeight, childWidths, childsUsed)
+    while index < children.count {
+      let row = calculateRow(
+        children: children,
+        startIndex: index,
+        normalizedWidth: normalizedWidth,
+        total: Double(total)
+      )
+      guard row.count > 0 else { break }
+      rows.append((row.height, children[index..<(index + row.count)], row.widths))
+      index += row.count
     }
+
+    var result: [TreeMapRect] = []
+    let parentLongStart = horizontal ? rect.minX : rect.minY
+    let parentShortStart = horizontal ? rect.minY : rect.minX
+    let parentLongEnd = horizontal ? rect.maxX : rect.maxY
+    let parentShortEnd = horizontal ? rect.maxY : rect.maxX
+    var shortStart = parentShortStart
+
+    for (rowIndex, row) in rows.enumerated() {
+      guard !Task.isCancelled else { return [] }
+      let proposedShortEnd = shortStart + CGFloat(row.height) * shortSide
+      let shortEnd =
+        rowIndex == rows.count - 1
+        ? parentShortEnd : min(max(proposedShortEnd.rounded(), shortStart), parentShortEnd)
+      var longStart = parentLongStart
+
+      for (childIndex, child) in row.children.enumerated() {
+        let proposedLongEnd = longStart + CGFloat(row.widths[childIndex]) * longSide
+        let longEnd =
+          childIndex == row.children.count - 1
+          ? parentLongEnd : min(max(proposedLongEnd.rounded(), longStart), parentLongEnd)
+        let childRect =
+          horizontal
+          ? CGRect(
+            x: longStart, y: shortStart, width: longEnd - longStart, height: shortEnd - shortStart)
+          : CGRect(
+            x: shortStart, y: longStart, width: shortEnd - shortStart, height: longEnd - longStart)
+
+        if childRect.width >= 1, childRect.height >= 1 {
+          result.append(
+            contentsOf: layoutNode(
+              node: child,
+              in: childRect,
+              showPackageContents: showPackageContents,
+              depth: depth + 1
+            ))
+        }
+        longStart = longEnd
+      }
+      shortStart = shortEnd
+    }
+
+    return result
+  }
+
+  private static func calculateRow(
+    children: [FileNode],
+    startIndex: Int,
+    normalizedWidth: Double,
+    total: Double
+  ) -> (height: Double, widths: [Double], count: Int) {
+    var sizeUsed = 0.0
+    var rowHeight = 0.0
+    var count = 0
+
+    for index in startIndex..<children.count {
+      sizeUsed += Double(children[index].size)
+      let proposedHeight = sizeUsed / total
+      let childWidth = Double(children[index].size) / total * normalizedWidth / proposedHeight
+
+      if count > 0, childWidth / proposedHeight < minimumAspectRatio {
+        break
+      }
+      rowHeight = proposedHeight
+      count += 1
+    }
+
+    guard count > 0 else { return (0, [], 0) }
+    let rowSize = total * rowHeight
+    let widths = children[startIndex..<(startIndex + count)].map { Double($0.size) / rowSize }
+    return (rowHeight, widths, count)
+  }
 }
