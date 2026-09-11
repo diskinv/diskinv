@@ -129,6 +129,38 @@ final class FileScannerTests: XCTestCase {
     }
   }
 
+  func testDenseTreeMapAggregatesTinyCellsAndCoversCanvas() {
+    let children = (0..<20_000).map { index in
+      FileNode(
+        path: "/\(index)",
+        name: "\(index)",
+        isDirectory: false,
+        size: 1,
+        kindID: FileKind.documentID
+      )
+    }
+    let root = FileNode(
+      path: "/",
+      name: "/",
+      isDirectory: true,
+      size: UInt64(children.count),
+      kindID: FileKind.folderID,
+      children: children
+    )
+    let bounds = CGRect(x: 0, y: 0, width: 800, height: 500)
+    let rectangles = TreeMapLayout.layout(
+      node: root,
+      in: bounds,
+      showPackageContents: true,
+      minimumSize: 2
+    )
+
+    let coveredArea = rectangles.reduce(0) { $0 + $1.rect.width * $1.rect.height }
+    XCTAssertTrue(rectangles.contains(where: \.isAggregate))
+    XCTAssertLessThan(rectangles.count, 6_000)
+    XCTAssertEqual(coveredArea, bounds.width * bounds.height, accuracy: 0.1)
+  }
+
   func testSizeAdditionSaturates() {
     XCTAssertEqual(UInt64.max.saturatingAdding(1), .max)
   }

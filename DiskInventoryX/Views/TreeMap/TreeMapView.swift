@@ -8,6 +8,7 @@ struct TreeMapView: View {
   @AppStorage("minimumRectangleSize") private var minimumRectangleSize = 2.0
   @State private var hoveredNode: FileNode?
   @State private var rectangles: [TreeMapRect] = []
+  @State private var layoutSize: CGSize = .zero
 
   let root: FileNode
 
@@ -21,49 +22,68 @@ struct TreeMapView: View {
         minimumSize: Int(minimumRectangleSize)
       )
 
-      Canvas { context, _ in
+      Canvas { context, size in
+        guard size.width > 0, size.height > 0 else { return }
+        drawBackground(size: size, in: &context)
+        var scaledContext = context
+        let sourceSize = layoutSize.width > 0 && layoutSize.height > 0 ? layoutSize : size
+        scaledContext.scaleBy(
+          x: size.width / sourceSize.width,
+          y: size.height / sourceSize.height
+        )
         for rectangle in rectangles {
-          draw(rectangle, in: &context)
+          draw(rectangle, in: &scaledContext)
         }
-        drawSelection(in: &context)
-        drawHover(in: &context)
+        drawSelection(in: &scaledContext)
+        drawHover(in: &scaledContext)
       }
       .background(Color.black)
       .contentShape(Rectangle())
-      .gesture(tapGesture)
+      .gesture(tapGesture(in: geometry.size))
       .onContinuousHover { phase in
         switch phase {
-        case .active(let point): hoveredNode = node(at: point)
+        case .active(let point): hoveredNode = node(at: point, in: geometry.size)
         case .ended: hoveredNode = nil
         }
       }
       .task(id: key) {
+        do {
+          try await Task.sleep(for: .milliseconds(180))
+        } catch {
+          return
+        }
         let root = root
         let size = geometry.size
         let showPackageContents = appState.showPackageContents
         let minimumSize = CGFloat(minimumRectangleSize)
-        let newRectangles = await Task.detached(priority: .userInitiated) {
+        let layoutTask = Task.detached(priority: .userInitiated) {
           TreeMapLayout.layout(
             node: root,
             in: CGRect(origin: .zero, size: size),
             showPackageContents: showPackageContents,
             minimumSize: minimumSize
           )
-        }.value
+        }
+        let newRectangles = await withTaskCancellationHandler {
+          await layoutTask.value
+        } onCancel: {
+          layoutTask.cancel()
+        }
         guard !Task.isCancelled else { return }
         rectangles = newRectangles
+        layoutSize = size
       }
     }
     .accessibilityLabel("Disk usage treemap")
   }
 
-  private var tapGesture: some Gesture {
+  private func tapGesture(in size: CGSize) -> some Gesture {
     SpatialTapGesture(count: 2)
       .exclusively(before: SpatialTapGesture(count: 1))
       .onEnded { value in
         switch value {
         case .first(let doubleTap):
-          guard let node = node(at: doubleTap.location) else { return }
+          guard let node = node(at: doubleTap.location, in: size) else { return }
           appState.selectedNode = node
           if node.isDirectory {
             appState.zoomIn()
@@ -75,9 +95,23 @@ struct TreeMapView: View {
             }
           }
         case .second(let singleTap):
-          appState.selectedNode = node(at: singleTap.location)
+          appState.selectedNode = node(at: singleTap.location, in: size)
         }
       }
+  }
+
+  private func drawBackground(size: CGSize, in context: inout GraphicsContext) {
+    let rect = CGRect(origin: .zero, size: size)
+    let colors = cushionColors(for: appState.color(for: root.kindID), depth: 0)
+    context.fill(
+      Path(rect),
+      with: .radialGradient(
+        Gradient(colors: [colors.highlight, colors.base, colors.edge]),
+        center: CGPoint(x: rect.midX, y: rect.midY),
+        startRadius: 0,
+        endRadius: max(rect.width, rect.height) * 0.72
+      )
+    )
   }
 
   private func draw(_ treeRect: TreeMapRect, in context: inout GraphicsContext) {
@@ -86,7 +120,7 @@ struct TreeMapView: View {
     let path = Path(rect)
     let base = appState.color(for: treeRect.node.kindID)
 
-    if cushionShading {
+    if cushionShading, min(rect.width, rect.height) >= 6 {
       let colors = cushionColors(for: base, depth: treeRect.depth)
       context.fill(
         path,
@@ -107,7 +141,7 @@ struct TreeMapView: View {
 
     context.stroke(path, with: .color(.black.opacity(0.45)), lineWidth: 0.6)
 
-    if showLabels, rect.width > 52, rect.height > 18 {
+    if showLabels, !treeRect.isAggregate, rect.width > 52, rect.height > 18 {
       var labelContext = context
       labelContext.clip(to: path)
       labelContext.draw(
@@ -145,8 +179,15 @@ struct TreeMapView: View {
     )
   }
 
-  private func node(at point: CGPoint) -> FileNode? {
-    rectangles.last(where: { $0.rect.contains(point) })?.node
+  private func node(at point: CGPoint, in size: CGSize) -> FileNode? {
+    guard size.width > 0, size.height > 0, layoutSize.width > 0, layoutSize.height > 0 else {
+      return nil
+    }
+    let layoutPoint = CGPoint(
+      x: point.x * layoutSize.width / size.width,
+      y: point.y * layoutSize.height / size.height
+    )
+    return rectangles.last(where: { $0.rect.contains(layoutPoint) })?.node
   }
 
   private func cushionColors(for color: Color, depth: Int) -> (

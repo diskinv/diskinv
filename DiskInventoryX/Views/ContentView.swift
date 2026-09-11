@@ -18,13 +18,18 @@ struct ContentView: View {
           }
         }
         .frame(minWidth: 420)
+
+        if showsKinds {
+          SidebarView()
+            .frame(minWidth: 260, idealWidth: 300, maxWidth: 420)
+        }
       }
 
       Divider()
       SelectionStatusBar()
     }
     .navigationTitle(appState.displayRoot?.name ?? "Disk Inventory Xs")
-    .frame(minWidth: 820, minHeight: 500)
+    .frame(minWidth: 940, minHeight: 500)
     .toolbar {
       ToolbarItemGroup {
         Button {
@@ -61,10 +66,6 @@ struct ContentView: View {
           Label("File Kinds", systemImage: "sidebar.right")
         }
       }
-    }
-    .inspector(isPresented: $showsKinds) {
-      SidebarView()
-        .inspectorColumnWidth(min: 260, ideal: 300, max: 420)
     }
     .overlay {
       if appState.isScanning {
