@@ -10,6 +10,7 @@
 //
 
 import XCTest
+import Cocoa
 @testable import Disk_Inventory_Xs
 
 final class FSItemScanTests: XCTestCase {
@@ -123,5 +124,61 @@ final class FSItemScanTests: XCTestCase {
             i += 1
         }
         return result
+    }
+}
+
+// Regression coverage for Swift image ownership when AppKit copies NSCells.
+final class ImageAndTextCellTests: XCTestCase {
+
+    func testRepeatedCopiesKeepCachedIconAliveAndReleaseItAfterwards() {
+        weak var cachedImage: NSImage?
+        autoreleasepool {
+            let cache = NSMutableDictionary()
+            let original = ImageAndTextCell(textCell: "source")
+            autoreleasepool {
+                let image = NSImage(size: NSSize(width: 16, height: 16))
+                cachedImage = image
+                original.image = image
+                cache.setObject(image, forKey: "icon" as NSString)
+            }
+            for _ in 0..<1000 {
+                autoreleasepool {
+                    let copy = original.copy() as! ImageAndTextCell
+                    XCTAssertTrue(copy.image === original.image)
+                    XCTAssertEqual(copy.stringValue, "source")
+                }
+                XCTAssertNotNil(cachedImage)
+            }
+            withExtendedLifetime((cache, original)) {}
+        }
+        XCTAssertNil(cachedImage, "the copied cells must not leak the image")
+    }
+
+    func testCopyKeepsImageAfterOriginalIsReleased() {
+        weak var image: NSImage?
+        let copy: ImageAndTextCell = autoreleasepool {
+            let original = ImageAndTextCell(textCell: "source")
+            let icon = NSImage(size: NSSize(width: 16, height: 16))
+            image = icon
+            original.image = icon
+            return original.copy() as! ImageAndTextCell
+        }
+        XCTAssertNotNil(image)
+        XCTAssertTrue(copy.image === image)
+        copy.image = nil
+        XCTAssertNil(image)
+    }
+
+    func testReplacingCopiedImagePreservesOriginal() {
+        let original = ImageAndTextCell(textCell: "source")
+        let image = NSImage(size: NSSize(width: 16, height: 16))
+        original.image = image
+        let copy = original.copy() as! ImageAndTextCell
+        copy.image = NSImage(size: NSSize(width: 32, height: 32))
+        XCTAssertTrue(original.image === image)
+        XCTAssertFalse(copy.image === image)
+        let empty = ImageAndTextCell(textCell: "empty").copy() as! ImageAndTextCell
+        XCTAssertNil(empty.image)
+        XCTAssertEqual(empty.stringValue, "empty")
     }
 }

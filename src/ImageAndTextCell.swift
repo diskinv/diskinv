@@ -35,8 +35,14 @@ class ImageAndTextCell: NSTextFieldCell {
     }
 
     override func copy(with zone: NSZone? = nil) -> Any {
+        // NSCell copies raw instance storage without retaining Swift properties.
+        // Keep the image out of that shallow copy, then assign it through ARC.
+        let image = _image
+        _image = nil
+        defer { _image = image }
+
         let cell = super.copy(with: zone) as! ImageAndTextCell
-        cell._image = _image
+        cell._image = image
         return cell
     }
 
