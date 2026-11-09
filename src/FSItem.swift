@@ -111,11 +111,26 @@ final class ScanProgress {
         set { lock.withLock { _finished = newValue } }
     }
 
-    //Bump the folder counter and record the current path in one locked section
-    //(workers call this at each directory boundary).
-    func noteEnteredFolder(path: String) {
+    private var _itemsScanned: Int = 0
+    private var _bytesScanned: UInt64 = 0
+
+    //files + folders found so far
+    var itemsScanned: Int {
+        lock.withLock { _itemsScanned }
+    }
+
+    //size of the files found so far
+    var bytesScanned: UInt64 {
+        lock.withLock { _bytesScanned }
+    }
+
+    //Record one listed folder: bump the counters and the current path in one
+    //locked section (scan operations call this once per directory).
+    func noteScannedFolder(path: String, items: Int, bytes: UInt64) {
         lock.withLock {
             _foldersScanned += 1
+            _itemsScanned += items
+            _bytesScanned += bytes
             _currentPath = path
         }
     }
@@ -1112,23 +1127,26 @@ final class ScanProgress {
 
     //MARK: ----------------- the scanner (parallel) -----------------------
     //
-    //Phase-1 parallel build. Runs on a background queue (the document keeps the
-    //main thread free to pump the progress panel). Partitioning:
+    //Runs on a background queue (the document keeps the main thread free to
+    //pump the progress panel). Each DIRECTORY is one unit of work on an
+    //OperationQueue capped at activeProcessorCount - 1:
     //
-    //  - This method is the COORDINATOR. It lists the root's immediate entries,
-    //    creates each immediate-child FSItem, and appends them to root._childs.
-    //    The coordinator is the SOLE writer of root._childs.
-    //  - For each immediate child that is a directory (and not a volume mount),
-    //    it dispatches a WORKER onto a concurrent queue. Each worker is the SOLE
-    //    writer of its own node and everything below it (a disjoint subtree),
-    //    recursing SERIALLY within the worker (no per-node dispatch).
-    //  - Counts are tallied per worker and merged after join; the globals are
-    //    written once, here, on the coordinator.
+    //  - An operation lists one directory, creates its children (appending to
+    //    that directory's _childs; it is the sole writer), and enqueues one
+    //    operation per subdirectory. Operations never block on each other, so
+    //    every core stays busy even when one top-level folder holds most of the
+    //    tree (the former one-worker-per-top-level-folder split ran such scans
+    //    almost serially).
+    //  - Each directory counts down its outstanding work (its own listing plus
+    //    each subdirectory's whole subtree). Whoever brings it to zero finalizes
+    //    it: file sizes (physical), folder size, and children sorted by size.
+    //    That replaces the former main-thread recalculateSize pass, so when
+    //    this returns, the whole tree, root included, is sized and sorted.
+    //  - Counts are tallied per operation and merged under a lock; the globals
+    //    are written once, here, after the join.
     //
     //Throws FSItemError.loadingCanceled if progress.cancelled becomes true.
-    //
-    //Phase 2 (recalculateSize + kind statistics) is NOT done here; the caller
-    //runs it on the main thread after this returns.
+    //Kind statistics are still collected by the caller on the main thread.
     private static let scanResourceKeys: [URLResourceKey] = [
         .nameKey,
         .isVolumeKey,
@@ -1139,9 +1157,17 @@ final class ScanProgress {
         .totalFileAllocatedSizeKey
     ]
 
-    //Bound the number of concurrently dispatched top-level subdirectory workers
-    //to the active processor count. Each worker descends serially, so this caps
-    //the live thread count regardless of how many immediate subdirs the root has.
+    //Outstanding-work counter for one directory of the parallel scan.
+    private final class ScanDirTask {
+        let item: FSItem
+        let parent: ScanDirTask?
+        var remaining = 1   //own listing + subdirectory subtrees; guarded by the scan lock
+        init(item: FSItem, parent: ScanDirTask?) {
+            self.item = item
+            self.parent = parent
+        }
+    }
+
     func loadChildrenParallel(params: ScanParams, progress: ScanProgress) throws {
         if !isFolder() {
             return
@@ -1149,133 +1175,132 @@ final class ScanProgress {
 
         _childs = []
 
-        let selfURL = fileURL()!
+        let queue = OperationQueue()
+        queue.name = "com.derlien.diskinventoryx.scan"
+        queue.maxConcurrentOperationCount = max(1, ProcessInfo.processInfo.activeProcessorCount - 1)
+        queue.qualityOfService = .userInitiated
 
-        if progress.cancelled {
-            throw FSItemError.loadingCanceled
-        }
-        progress.noteEnteredFolder(path: selfURL.cachedPath())
-
-        //list the root's immediate entries (coordinator owns root._childs)
-        let entries = try FSItem.directoryEntries(of: selfURL)
-
-        //create immediate-child nodes serially on the coordinator. Counting the
-        //root's own immediate files happens here.
-        var coordinatorCounts = ScanCounts()
-        var subdirWorkers: [FSItem] = []
-        for entryURL in entries {
-            entryURL.cacheResources(in: FSItem.scanResourceKeys)
-            let child = FSItem(url: entryURL, parent: self,
-                               setKindString: params.setKindStrings,
-                               usePhysicalSize: params.usePhysicalSize,
-                               counts: &coordinatorCounts)
-            //descend into directory children, except volume mount points
-            //(matches the serial walk, which skips volume descendants).
-            if entryURL.isDirectory() && !entryURL.isVolume() {
-                subdirWorkers.append(child)
-            }
-        }
-
-        //dispatch one worker per immediate subdirectory; each fills its own
-        //disjoint subtree. Bounded by a semaphore = activeProcessorCount - 1,
-        //leaving one core for the main thread (modal-session pump + coordinator).
         let group = DispatchGroup()
-        let queue = DispatchQueue(label: "com.derlien.diskinventoryx.scan",
-                                  attributes: .concurrent)
-        let workerLimit = max(1, ProcessInfo.processInfo.activeProcessorCount - 1)
-        let semaphore = DispatchSemaphore(value: workerLimit)
-
-        //Each worker scans its disjoint subtree with a worker-LOCAL ScanCounts,
-        //then merges that local tally into the shared `merged` accumulator under
-        //`mergeLock` exactly once (so the only shared mutation is a brief locked
-        //add, not per-node). The first worker error is likewise recorded under
-        //the lock. No node state is shared between workers.
-        let mergeLock = UnfairLock()
+        let lock = UnfairLock()
         var merged = ScanCounts()
-        var firstError: Error?
 
-        for subdir in subdirWorkers {
-            semaphore.wait()
-            queue.async(group: group) {
-                defer { semaphore.signal() }
-                var localCounts = ScanCounts()
-                do {
-                    try subdir.scanSubtreeSerially(params: params,
-                                                   progress: progress,
-                                                   counts: &localCounts)
-                    mergeLock.withLock { merged = merged + localCounts }
-                } catch {
-                    //surface the error and signal siblings to stop. The partial
-                    //local tally is discarded (results are about to be torn down).
-                    mergeLock.withLock {
-                        if firstError == nil { firstError = error }
-                    }
-                    progress.cancelled = true
+        //a unit of `task`'s work is done; finalize every directory whose
+        //subtree this completes, walking up toward the root
+        func workDone(_ task: ScanDirTask) {
+            var current: ScanDirTask? = task
+            while let dir = current {
+                let complete = lock.withLock { () -> Bool in
+                    dir.remaining -= 1
+                    return dir.remaining == 0
                 }
+                if !complete {
+                    return
+                }
+                dir.item.finalizeScannedFolder()
+                current = dir.parent
             }
         }
+
+        func submit(_ task: ScanDirTask) {
+            group.enter()
+            queue.addOperation {
+                defer { group.leave() }
+                if progress.cancelled {
+                    return
+                }
+
+                var counts = ScanCounts()
+                var subdirs: [FSItem] = []
+                var bytes: UInt64 = 0
+                var path = ""
+                autoreleasepool {
+                    let dirURL = task.item.fileURL()!
+                    path = dirURL.cachedPath()
+                    for entryURL in FSItem.directoryEntries(of: dirURL) {
+                        entryURL.cacheResources(in: FSItem.scanResourceKeys)
+                        let child = FSItem(url: entryURL, parent: task.item,
+                                           setKindString: params.setKindStrings,
+                                           usePhysicalSize: params.usePhysicalSize,
+                                           counts: &counts)
+                        //descend into directories, except volume mount points
+                        //(matches the serial walk, which skips volume descendants)
+                        if entryURL.isDirectory() && !entryURL.isVolume() {
+                            subdirs.append(child)
+                        } else {
+                            bytes += child.sizeValue()
+                        }
+                    }
+                }
+
+                progress.noteScannedFolder(path: path,
+                                           items: Int(counts.files + counts.folders),
+                                           bytes: bytes)
+                lock.withLock {
+                    merged = merged + counts
+                    task.remaining += subdirs.count
+                }
+                for subdir in subdirs {
+                    submit(ScanDirTask(item: subdir, parent: task))
+                }
+                workDone(task)
+            }
+        }
+
+        submit(ScanDirTask(item: self, parent: nil))
         group.wait()
 
-        //join complete. Surface the first worker error (cancel or failure).
-        if let firstError = firstError { throw firstError }
         if progress.cancelled {
             throw FSItemError.loadingCanceled
         }
 
-        //merge counts and publish the globals (coordinator-only write).
-        let total = coordinatorCounts + merged
-        g_fileCount += total.files
-        g_folderCount += total.folders
+        //publish the globals (coordinator-only write)
+        g_fileCount += merged.files
+        g_folderCount += merged.folders
     }
 
-    //Worker body: recursively fill THIS node's subtree, serially. The receiver
-    //is a directory node already created (with _childs == []) and owned solely
-    //by this worker. No delegate calls, no global mutation; counts tally into
-    //the inout `counts`.
-    private func scanSubtreeSerially(params: ScanParams,
-                                     progress: ScanProgress,
-                                     counts: inout ScanCounts) throws {
-        //cancel check at each directory boundary
-        if progress.cancelled {
-            throw FSItemError.loadingCanceled
+    //Finalize a scanned folder whose subfolders are all final: physical file
+    //sizes, the folder's size, and children sorted by size (descending). Gives
+    //the same result as recalculateSize(true, updateParent: false) without
+    //re-walking the (already final) subfolders, and fetches each child's name
+    //once instead of once per comparison.
+    private func finalizeScannedFolder() {
+        guard let childs = _childs else {
+            recalculateSize(true, updateParent: false)
+            return
         }
 
-        let selfURL = fileURL()!
-        progress.noteEnteredFolder(path: selfURL.cachedPath())
-
-        //Drain autoreleased temporaries (directory listings, resource-value
-        //dictionaries, UTType lookups) per directory, as the serial walk does
-        //per entry. A worker owns a whole top-level subtree, so without this
-        //nothing is released until the entire subtree is done.
-        let entries = try autoreleasepool { try FSItem.directoryEntries(of: selfURL) }
-
-        //recurse into subdirectories after creating all children. We descend
-        //children in listing order; final ordering is fixed up by the
-        //main-thread recalculateSize(...) sort after join, so listing order
-        //does not affect the final tree.
-        for entryURL in entries {
-            let child: FSItem = autoreleasepool {
-                entryURL.cacheResources(in: FSItem.scanResourceKeys)
-                return FSItem(url: entryURL, parent: self,
-                              setKindString: params.setKindStrings,
-                              usePhysicalSize: params.usePhysicalSize,
-                              counts: &counts)
+        var size: UInt64 = 0
+        var keyed: [(size: UInt64, name: String, item: FSItem)] = []
+        keyed.reserveCapacity(childs.count)
+        for child in childs {
+            //files get their physical size; a subfolder is already final, except
+            //an undescended one (volume mount point), which is empty and cheap
+            if !child.isFolder() || (child._childs?.isEmpty ?? true) {
+                child.recalculateSize(true, updateParent: false)
             }
-            if entryURL.isDirectory() && !entryURL.isVolume() {
-                //serial descent within this worker (no dispatch below root)
-                try child.scanSubtreeSerially(params: params,
-                                              progress: progress,
-                                              counts: &counts)
-            }
+            size += child.sizeValue()
+            keyed.append((child.sizeValue(), child.name(), child))
         }
+
+        //same order as sort { $0.compareSizeDescendingly($1) == .orderedAscending }:
+        //bigger first; equal sizes by name, descending
+        keyed.sort { a, b in
+            if a.size != b.size {
+                return a.size > b.size
+            }
+            return (a.name as NSString).compare(asFilesystemName: b.name) == .orderedDescending
+        }
+
+        _childs = keyed.map { $0.item }
+        setSizeValue(size)
     }
 
     //Per-directory listing with the same prefetched resource keys the serial
-    //walk uses. A fresh NSURL is produced per entry, so disjoint subtrees never
-    //share a URL object (thread-confined resource cache). Errors enumerating a
-    //subdirectory are swallowed (treated as empty), mirroring the serial
+    //walk uses. A fresh NSURL is produced per entry, so concurrent operations
+    //never share a URL object (thread-confined resource cache). Errors listing
+    //a directory are swallowed (treated as empty), mirroring the serial
     //enumerator's errorHandler which continues past per-item errors.
-    private static func directoryEntries(of dirURL: NSURL) throws -> [NSURL] {
+    private static func directoryEntries(of dirURL: NSURL) -> [NSURL] {
         do {
             let urls = try FileManager.default.contentsOfDirectory(
                 at: dirURL as URL,

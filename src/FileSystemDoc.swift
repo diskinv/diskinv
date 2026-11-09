@@ -43,6 +43,7 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
 
     //these variables are used during the initial directory scan
     private var _progressController: LoadingPanelController?
+    private var _lastScanDetail = ""   //last live-count line shown while scanning
     //Private transient scan state: stack of folders during the progress scan.
     private var _directoryStack: [FSItem]?
 
@@ -141,16 +142,15 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
 
             //ok, now we've got an FSItem for every file and directory in the given folder
 
-            //Phase 2 (main thread, unchanged): finalize sizes (incl. OtherSpace
-            //via the now-final root size) then collect per-kind statistics.
-            //
-            //The serial scanner ends loadChildrenSerial with
-            //recalculateSize(true, ...) (physical), which both sorts every
-            //folder's children by size and re-derives file sizes physically. We
-            //reproduce exactly that call here so the parallel result is
-            //byte-identical (matching size value AND child ordering).
-            if FSItem.parallelScanEnabled {
-                rootItem.recalculateSize(true, updateParent: false)
+            //Phase 2 (main thread): collect per-kind statistics. Sizes and
+            //child order are already final: the serial scanner ends with
+            //recalculateSize(true, ...), and the parallel one finalizes each
+            //folder (same physical sizes, same sort) as its subtree completes.
+            if let progressController = _progressController {
+                progressController.setStatus(
+                    title: NSLocalizedString("Collecting file kinds…", comment: "scan progress"),
+                    folder: "", detail: _lastScanDetail, fraction: nil)
+                progressController.applyStatusNow()
             }
 
             //collect sizes and file count of all file kinds
@@ -191,15 +191,18 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
     }
 
     //Drive the parallel phase-1 scan: snapshot the behavior flags on the main
-    //thread, dispatch the coordinator+workers onto a background queue, and pump
-    //the progress panel here on the main thread at ~5 Hz until the scan finishes
-    //(or the user cancels / it errors). Rethrows the scan's error so the
-    //existing do/catch in readFromFolder performs the identical tear-down.
+    //thread, dispatch the scan onto a background queue, and pump the progress
+    //panel here on the main thread at ~5 Hz until the scan finishes (or the
+    //user cancels / it errors). Rethrows the scan's error so the existing
+    //do/catch in readFromFolder performs the identical tear-down.
     private func runParallelScan(rootItem: FSItem) throws {
         //snapshot delegate-derived flags ONCE on the main thread (workers must
         //not call the delegate). setKindStrings == true mirrors loadChildren().
         let params = rootItem.makeScanParams(setKindStrings: true)
         let progress = ScanProgress()
+        let rootPath = rootItem.path()
+        let expectedItems = ScanEstimate.expectedItemCount(forFolder: rootPath)
+        let startTime = Date()
 
         //capture the scan's outcome to rethrow on the main thread after join.
         var scanError: Error?
@@ -217,9 +220,18 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
 
         //main-thread pump loop: refresh the panel and watch for Cancel.
         //LoadingPanelController.runEventLoop() self-throttles to ~5 Hz.
+        var eta = ScanEstimate.RemainingTime()
         while !progress.finished {
             if let progressController = _progressController {
-                progressController.setMessageText(progress.currentPath)
+                let status = ScanEstimate.status(rootPath: rootPath,
+                                                 progress: progress,
+                                                 expectedItems: expectedItems,
+                                                 elapsed: Date().timeIntervalSince(startTime),
+                                                 eta: &eta)
+                _lastScanDetail = status.detail
+                progressController.setStatus(title: status.title, folder: status.folder,
+                                             detail: status.detail,
+                                             fraction: status.fraction.map { NSNumber(value: $0) })
                 progressController.runEventLoop()
                 if progressController.cancelPressed() {
                     progress.cancelled = true
@@ -237,6 +249,10 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
         if let scanError = scanError {
             throw scanError
         }
+
+        //remember how big this folder was, so the next scan of it can show a
+        //real percentage and time left
+        ScanEstimate.recordItemCount(progress.itemsScanned, forFolder: rootPath)
     }
 
     //MARK: view options
@@ -496,8 +512,8 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
                     //shown for "many"-child items); runParallelScan tolerates a
                     //nil _progressController. Phase 2 recalc mirrors what the
                     //serial loadChildren did internally.
+                    //(sizes and child order are final when this returns)
                     try runParallelScan(rootItem: newItem)
-                    newItem.recalculateSize(true, updateParent: false)
                 } else {
                     try newItem.loadChildren()
                 }
@@ -981,5 +997,136 @@ class FileSystemDoc: NSDocument, FSItemDelegate {
 
             fileMgr.triggerConsentDialog(forPrivacyProtectedFolders: protectedFolders)
         }
+    }
+}
+
+//MARK: - scan progress text and time-left estimate
+
+//Builds the progress panel's text while scanning and estimates the time left.
+//A percentage needs the total number of items up front, which is known for a
+//volume's root (the volume's used inode count) and for any folder scanned
+//before (remembered from the last completed scan). Otherwise the panel shows
+//live counts and an animated bar.
+enum ScanEstimate {
+    private static let defaultsKey = "ScanItemCounts"
+    private static let maxRememberedFolders = 100
+
+    //expected number of items (files + folders) the scan will find, if knowable
+    static func expectedItemCount(forFolder path: String) -> Int? {
+        let url = URL(fileURLWithPath: path)
+        if (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true {
+            var count = usedInodeCount(atPath: path)
+            //the startup volume's root also reaches the Data volume through firmlinks
+            if path == "/", let dataCount = usedInodeCount(atPath: "/System/Volumes/Data") {
+                count = (count ?? 0) + dataCount
+            }
+            if let count = count, count > 0 {
+                return count
+            }
+        }
+        if let entry = UserDefaults.standard.dictionary(forKey: defaultsKey)?[path] as? [String: Any],
+           let count = entry["count"] as? Int, count > 0 {
+            return count
+        }
+        return nil
+    }
+
+    private static func usedInodeCount(atPath path: String) -> Int? {
+        var fs = statfs()
+        guard statfs(path, &fs) == 0, fs.f_files > fs.f_ffree else { return nil }
+        return Int(fs.f_files - fs.f_ffree)
+    }
+
+    static func recordItemCount(_ count: Int, forFolder path: String) {
+        guard count > 0 else { return }
+        var all = UserDefaults.standard.dictionary(forKey: defaultsKey) ?? [:]
+        all[path] = ["count": count, "date": Date()]
+        if all.count > maxRememberedFolders {
+            func date(_ value: Any) -> Date {
+                ((value as? [String: Any])?["date"] as? Date) ?? .distantPast
+            }
+            if let oldest = all.min(by: { date($0.value) < date($1.value) }) {
+                all.removeValue(forKey: oldest.key)
+            }
+        }
+        UserDefaults.standard.set(all, forKey: defaultsKey)
+    }
+
+    //smoothed scan rate, so the time left doesn't jump around
+    struct RemainingTime {
+        fileprivate var lastElapsed: TimeInterval = 0
+        fileprivate var lastItems = 0
+        fileprivate var itemsPerSecond: Double = 0
+    }
+
+    private static let countFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        return formatter
+    }()
+
+    static func status(rootPath: String, progress: ScanProgress, expectedItems: Int?,
+                       elapsed: TimeInterval, eta: inout RemainingTime)
+        -> (title: String, folder: String, detail: String, fraction: Double?) {
+        let items = progress.itemsScanned
+        let bytes = progress.bytesScanned
+
+        //update the smoothed rate about twice a second
+        if elapsed - eta.lastElapsed >= 0.5 {
+            let rate = Double(items - eta.lastItems) / (elapsed - eta.lastElapsed)
+            eta.itemsPerSecond = eta.itemsPerSecond == 0 ? rate : 0.7 * eta.itemsPerSecond + 0.3 * rate
+            eta.lastElapsed = elapsed
+            eta.lastItems = items
+        }
+
+        //title: what is scanned, how far along, and how long is left
+        let name = FileManager.default.displayName(atPath: rootPath)
+        var title = String(format: NSLocalizedString("Scanning “%@”", comment: "scan progress"), name)
+        var fraction: Double?
+        if let expected = expectedItems, expected > 0 {
+            let value = min(Double(items) / Double(expected), 0.99)
+            fraction = value
+            title += String(format: " — %d%%", Int(value * 100))
+            if elapsed >= 2, value >= 0.03, eta.itemsPerSecond > 0 {
+                if items >= expected {
+                    title += " · " + NSLocalizedString("almost done", comment: "scan progress")
+                } else {
+                    let seconds = Double(expected - items) / eta.itemsPerSecond
+                    title += " · " + timeLeftString(seconds)
+                }
+            }
+        }
+
+        //folder: the one being scanned, relative to the scanned folder
+        var folder = progress.currentPath
+        if folder.hasPrefix(rootPath) {
+            folder = String(folder.dropFirst(rootPath.count))
+            if folder.hasPrefix("/") {
+                folder.removeFirst()
+            }
+        } else {
+            folder = (folder as NSString).abbreviatingWithTildeInPath
+        }
+
+        //detail: live counts and elapsed time
+        let itemsString = countFormatter.string(from: NSNumber(value: items)) ?? "\(items)"
+        let bytesString = ByteCountFormatter.string(fromByteCount: Int64(clamping: bytes), countStyle: .file)
+        let seconds = Int(elapsed)
+        let detail = String(format: NSLocalizedString("%@ items · %@ · %d:%02d", comment: "scan progress: items, size, elapsed m:ss"),
+                            itemsString, bytesString, seconds / 60, seconds % 60)
+
+        return (title, folder, detail, fraction)
+    }
+
+    private static func timeLeftString(_ seconds: Double) -> String {
+        if seconds < 10 {
+            return NSLocalizedString("a few seconds left", comment: "scan progress")
+        }
+        if seconds < 60 {
+            let rounded = Int((seconds / 5).rounded()) * 5
+            return String(format: NSLocalizedString("about %d s left", comment: "scan progress"), rounded)
+        }
+        let minutes = Int((seconds / 60).rounded())
+        return String(format: NSLocalizedString("about %d min left", comment: "scan progress"), minutes)
     }
 }
