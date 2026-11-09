@@ -25,6 +25,9 @@ import Cocoa
 // brightness of 2.5.
 private let BASE_BRIGHTNESS: CGFloat = 1.8
 private let MAX_RGB_VALUE: CGFloat = 1.0
+// flat (merged small-items) cells are drawn dimmer than cushions so they read
+// as a backdrop of many small files rather than one big one
+private let flatBrightness: CGFloat = 0.55
 
 @objc(TMVCushionRenderer)
 final class TMVCushionRenderer: NSObject {
@@ -195,6 +198,32 @@ final class TMVCushionRenderer: NSObject {
                 ix += 1
             }
             iy += 1
+        }
+    }
+
+    // fills the rect with the plain color (no cushion shading); used for cells
+    // that stand for a group of merged small items
+    @objc(renderFlatInBitmap:)
+    func renderFlat(inBitmap bitmap: NSBitmapImageRep) {
+        let rect = self.rect()
+        assert(rect.maxY <= CGFloat(bitmap.pixelsHigh), "_rect exeeds bitmap height")
+        assert(rect.maxX <= CGFloat(bitmap.pixelsWide), "_rect exeeds bitmap width")
+        guard let pixels = bitmap.bitmapData else { return }
+
+        let color = self.color()
+        let red = UInt8(max(0, min(1, color.redComponent * flatBrightness)) * 255)
+        let green = UInt8(max(0, min(1, color.greenComponent * flatBrightness)) * 255)
+        let blue = UInt8(max(0, min(1, color.blueComponent * flatBrightness)) * 255)
+
+        let bytesPerRow = bitmap.bytesPerRow
+        for iy in Int(rect.minY)..<Int(rect.maxY) {
+            let rowStart = pixels + iy * bytesPerRow
+            for ix in Int(rect.minX)..<Int(rect.maxX) {
+                let pixel = rowStart + (ix * 3)
+                pixel[0] = red
+                pixel[1] = green
+                pixel[2] = blue
+            }
         }
     }
 

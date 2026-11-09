@@ -18,6 +18,19 @@ import Cocoa
 
 private let CUSHION_SCALE_FACTOR: Float = 0.9
 
+// Children whose cell would be smaller than this many square points are not
+// drawn individually; a folder's small children are merged into one "small
+// items" cell instead. Without this, folders with thousands of tiny files turn
+// into speckle (and sub-point cells are skipped entirely, leaving black holes).
+// Overridable via the "TreeMapMinimumCellArea" user default (0 = off).
+private let defaultMinimumCellArea: Double = 16   // ~4 x 4 pt
+private let minimumCellAreaDefaultsKey = "TreeMapMinimumCellArea"
+
+// Fallback color for a merged small-items cell when the delegate gives none;
+// normally it takes the color of its largest merged file, drawn flat and dimmed.
+private let smallItemsColor: NSColor =
+    TMVCushionRenderer.normalize(NSColor(calibratedWhite: 0.45, alpha: 1))
+
 // holds display information about one cell in the treemap
 @objc(TMVItem)
 final class TMVItem: NSObject {
@@ -30,6 +43,23 @@ final class TMVItem: NSObject {
     private var _rect: NSRect = .zero          // cell rect (in backing coordinates of the tree map view)
     private var _childRenderers: [TMVItem]?
     private let _cushionRenderer: TMVCushionRenderer
+
+    // Small-item merging (see defaultMinimumCellArea).
+    // _laidOutRenderers: the cells actually laid out/drawn/hit-tested for this
+    // node: the children big enough to show, plus _smallItemsRenderer if any
+    // children were merged. nil until the first layout.
+    private var _laidOutRenderers: [TMVItem]?
+    // synthetic leaf standing for this node's merged small children; its item
+    // is this node's item (so hovering/clicking it refers to the folder)
+    private var _smallItemsRenderer: TMVItem?
+    // set on a child that was merged into its parent's small-items cell
+    private(set) var isMergedIntoParent = false
+    // non-nil only for a small-items renderer: the summed weight it stands for
+    private var _aggregateWeight: UInt64?
+    private var _aggregateCount = 0
+    // for a small-items cell: the item of its largest merged file, whose color
+    // the cell takes (so a folder of tiny .js files stays the .js color)
+    private var _representativeItem: Any?
 
     // Lazily-initialized shared drawing colors/attributes (was +initialize statics).
     private static let leafGridColor: NSColor = .disabledControlTextColor
@@ -50,11 +80,46 @@ final class TMVItem: NSObject {
         }
     }
 
+    // creates a small-items renderer: a leaf representing `count` merged
+    // children of `parent`, with their summed weight
+    private init(smallItemsOf parent: TMVItem, weight: UInt64, count: Int) {
+        _item = parent._item
+        _dataSource = parent._dataSource
+        _delegate = parent._delegate
+        _view = parent._view
+        _rect = .zero
+        _cushionRenderer = TMVCushionRenderer()
+        _aggregateWeight = weight
+        _aggregateCount = count
+        super.init()
+        _cushionRenderer.setColor(smallItemsColor)
+    }
+
+    // true for the synthetic cell standing for a folder's merged small children
+    @objc
+    var isSmallItemsCell: Bool {
+        _aggregateWeight != nil
+    }
+
+    // number of children merged into this small-items cell (0 for regular cells)
+    @objc
+    var mergedItemCount: Int {
+        _aggregateCount
+    }
+
+    // the small-items cell this node's merged children were folded into, if any
+    var smallItemsRenderer: TMVItem? {
+        _smallItemsRenderer
+    }
+
     @objc(refreshWithItem:)
     func refresh(withItem item: Any?) {
         _item = item
         _rect = .zero
         _cushionRenderer.setRect(.zero)
+        _laidOutRenderers = nil
+        _smallItemsRenderer = nil
+        isMergedIntoParent = false
 
         if !isLeaf() {
             createChildRenderers()
@@ -108,7 +173,7 @@ final class TMVItem: NSObject {
             TMVItem.leafGridColor.set()
             __NSFrameRectWithWidthUsingOperation(rectPoints, 1, .copy)
         } else {
-            for childRenderer in _childRenderers ?? [] {
+            for childRenderer in laidOutRenderers {
                 childRenderer.drawGrid()
             }
         }
@@ -156,6 +221,7 @@ final class TMVItem: NSObject {
 
     @objc
     func isLeaf() -> Bool {
+        if isSmallItemsCell { return true }
         guard let ds = dataSource else { return true }
         return !(ds.treeMapView!(_view, isNode: _item))
     }
@@ -167,6 +233,7 @@ final class TMVItem: NSObject {
 
     @objc
     func weight() -> UInt64 {
+        if let aggregateWeight = _aggregateWeight { return aggregateWeight }
         guard let ds = dataSource else { return 0 }
         return ds.treeMapView!(_view, weightByItem: _item)
     }
@@ -202,7 +269,7 @@ final class TMVItem: NSObject {
         if isLeaf() {
             return self
         } else {
-            for childRenderer in _childRenderers ?? [] {
+            for childRenderer in laidOutRenderers {
                 if let hit = childRenderer.hitTest(aPoint) {
                     return hit
                 }
@@ -230,14 +297,23 @@ final class TMVItem: NSObject {
         }
 
         if isLeaf() {
-            if let delegate = delegate,
+            let colorItem = isSmallItemsCell ? _representativeItem : _item
+            if isSmallItemsCell {
+                _cushionRenderer.setColor(smallItemsColor)
+            }
+            if colorItem != nil || !isSmallItemsCell, let delegate = delegate,
                (_delegate?.responds(to: #selector(TreeMapViewDelegate.treeMapView(_:willDisplayItem:withRenderer:))) ?? false) {
-                delegate.treeMapView!(_view, willDisplayItem: _item, withRenderer: self)
+                delegate.treeMapView!(_view, willDisplayItem: colorItem, withRenderer: self)
             }
 
-            _cushionRenderer.renderCushion(inBitmap: bitmap)
+            if isSmallItemsCell {
+                // flat, without a cushion, so it reads as a group rather than one file
+                _cushionRenderer.renderFlat(inBitmap: bitmap)
+            } else {
+                _cushionRenderer.renderCushion(inBitmap: bitmap)
+            }
         } else {
-            for child in _childRenderers ?? [] {
+            for child in laidOutRenderers {
                 child.drawCushion(inBitmap: bitmap,
                                   parentCushion: _cushionRenderer,
                                   cushionHeightFactor: heightFactor * CUSHION_SCALE_FACTOR)
@@ -245,15 +321,120 @@ final class TMVItem: NSObject {
         }
     }
 
+    // the cells laid out, drawn and hit-tested for this node
+    private var laidOutRenderers: [TMVItem] {
+        _laidOutRenderers ?? _childRenderers ?? []
+    }
+
+    private static func minimumCellArea() -> Double {
+        if UserDefaults.standard.object(forKey: minimumCellAreaDefaultsKey) != nil {
+            return max(0, UserDefaults.standard.double(forKey: minimumCellAreaDefaultsKey))
+        }
+        return defaultMinimumCellArea
+    }
+
+    // the heaviest file among `renderers` and their descendants, following
+    // each folder's largest child (children are sorted by size, descending)
+    private static func largestLeaf(among renderers: [TMVItem]) -> TMVItem? {
+        guard var candidate = renderers.max(by: { $0.weight() < $1.weight() }) else {
+            return nil
+        }
+        while !candidate.isLeaf() {
+            guard let next = candidate._childRenderers?.max(by: { $0.weight() < $1.weight() }) else {
+                return nil
+            }
+            candidate = next
+        }
+        return candidate
+    }
+
+    // drops this renderer (a merged child) out of the layout
+    private func markMergedIntoParent() {
+        isMergedIntoParent = true
+        _rect = .zero
+        _cushionRenderer.setRect(.zero)
+    }
+
+    // Splits the children into those big enough to get their own cell and the
+    // rest, which are merged into one small-items cell. Children are sorted by
+    // size descending, so the merged ones are (nearly always) the tail.
+    private func computeLaidOutRenderers(_ childRenderers: [TMVItem]) -> [TMVItem] {
+        let minArea = TMVItem.minimumCellArea()
+        let totalWeight = Double(weight())
+        guard minArea > 0, totalWeight > 0, childRenderers.count > 1 else {
+            return childRenderers
+        }
+
+        // area of this cell in points (cells are in backing pixels)
+        let rectPoints = _view?.convertRectFromBackingRespectingFlipped(_rect) ?? _rect
+        let areaPoints = Double(rectPoints.width) * Double(rectPoints.height)
+
+        var shown: [TMVItem] = []
+        var merged: [TMVItem] = []
+        var mergedWeight: UInt64 = 0
+        for child in childRenderers {
+            let childWeight = child.weight()
+            if areaPoints * Double(childWeight) / totalWeight < minArea {
+                merged.append(child)
+                mergedWeight += childWeight
+            } else {
+                shown.append(child)
+            }
+        }
+
+        // merging a single child gains nothing; keep it as it is
+        if merged.count < 2 {
+            return childRenderers
+        }
+
+        for child in shown {
+            child.isMergedIntoParent = false
+        }
+        for child in merged {
+            child.markMergedIntoParent()
+        }
+
+        let smallItems: TMVItem
+        if let existing = _smallItemsRenderer {
+            existing._aggregateWeight = mergedWeight
+            existing._aggregateCount = merged.count
+            smallItems = existing
+        } else {
+            smallItems = TMVItem(smallItemsOf: self, weight: mergedWeight, count: merged.count)
+            _smallItemsRenderer = smallItems
+        }
+        // force the cell to take its new rect even if the size is unchanged
+        smallItems._rect = .zero
+        smallItems._representativeItem = TMVItem.largestLeaf(among: merged)?._item
+
+        // keep the cell list sorted by weight (descending), as the
+        // squarified layout expects
+        let insertIndex = shown.firstIndex { $0.weight() < mergedWeight } ?? shown.count
+        shown.insert(smallItems, at: insertIndex)
+        return shown
+    }
+
     private func layoutChilds() {
-        guard let childRenderers = _childRenderers else { return }
+        guard let allChildRenderers = _childRenderers else { return }
+
+        let childRenderers = computeLaidOutRenderers(allChildRenderers)
+        if childRenderers.count == allChildRenderers.count {
+            // nothing merged
+            _smallItemsRenderer = nil
+            _laidOutRenderers = nil
+            for child in allChildRenderers where child.isMergedIntoParent {
+                child.isMergedIntoParent = false
+            }
+        } else {
+            _laidOutRenderers = childRenderers
+        }
 
         var rows: [Double] = []              // fraction of total height for each row
         var childsPerRow: [Int] = []         // number of childs per row
         var childWidths: [Double] = []       // fraction of total width for each child
 
         var horizontalRows = false
-        arrangeChildsOnRows(rows: &rows, childsPerRow: &childsPerRow,
+        arrangeChildsOnRows(childRenderers, rows: &rows, childsPerRow: &childsPerRow,
                             childWidths: &childWidths, rowsAreHoriz: &horizontalRows)
 
         let parentWidth = Int(horizontalRows ? _rect.width : _rect.height)
@@ -307,11 +488,12 @@ final class TMVItem: NSObject {
         }
     }
 
-    private func arrangeChildsOnRows(rows: inout [Double],
+    private func arrangeChildsOnRows(_ childRenderers: [TMVItem],
+                                     rows: inout [Double],
                                      childsPerRow: inout [Int],
                                      childWidths: inout [Double],
                                      rowsAreHoriz horizontal: inout Bool) {
-        let childCount = _childRenderers?.count ?? 0
+        let childCount = childRenderers.count
 
         if weight() == 0 {
             rows.append(1)
@@ -340,7 +522,7 @@ final class TMVItem: NSObject {
             var i = 0
             while i < childCount {
                 var childsUsed = 0
-                let rowHeight = calculateRow(startChildIndex: i, rowWidth: width,
+                let rowHeight = calculateRow(childRenderers, startChildIndex: i, rowWidth: width,
                                              childsUsed: &childsUsed, childWidths: &childWidths)
                 rows.append(rowHeight)
                 childsPerRow.append(childsUsed)
@@ -349,11 +531,10 @@ final class TMVItem: NSObject {
         }
     }
 
-    private func calculateRow(startChildIndex: Int, rowWidth: Double,
+    private func calculateRow(_ childRenderers: [TMVItem], startChildIndex: Int, rowWidth: Double,
                               childsUsed: inout Int, childWidths: inout [Double]) -> Double {
         let minProportion = 0.4
         let mySize = Double(weight())
-        let childRenderers = _childRenderers ?? []
         let childCount = childRenderers.count
 
         var sizeUsed = 0.0
