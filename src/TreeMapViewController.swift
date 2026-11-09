@@ -166,6 +166,17 @@ class TreeMapViewController: NSObject {
         let sizeFormatter = FileSizeFormatter()
         let size = sizeFormatter.string(for: fsItem.size()) ?? ""
 
+        // a cell standing for many small items merged together (fsItem is their folder)
+        if let mergedCount = notification.userInfo?[TMVTouchedMergedItemCount] as? Int,
+           let mergedSize = notification.userInfo?[TMVTouchedMergedItemSize] as? NSNumber {
+            let mergedSizeString = sizeFormatter.string(for: mergedSize) ?? ""
+            _fileNameTextField.stringValue = String(
+                format: NSLocalizedString("%ld small items in %@", comment: "treemap cell of merged small items"),
+                mergedCount, displayName)
+            _fileSizeTextField.stringValue = mergedSizeString
+            return
+        }
+
         if !fsItem.isSpecialItem() {
             displayName += " (\(fsItem.displayFolderName()))"
             _fileSizeTextField.stringValue = "\(fsItem.kindName()), \(size)"
@@ -178,6 +189,15 @@ class TreeMapViewController: NSObject {
     @objc func treeMapViewSelectionDidChange(_ notification: Notification!) {
         let item = _treeMapView.selectedItem() as? FSItem
         let doc = document()
+
+        // Selecting a file that is too small to draw highlights its folder's
+        // merged small-items cell, whose item is the folder. Don't let that
+        // echo replace the selected file with the folder.
+        if let cell = _treeMapView.selectedCellId(), cell.isSmallItemsCell,
+           let folder = item, let selected = doc?.selectedItem(),
+           selected !== folder, selected.isDescendant(of: folder) {
+            return
+        }
 
         // ignore the echo of a selection we set ourselves (onDocumentSelectionChanged)
         if doc?.selectedItem() !== item, !(item?.isSpecialItem() ?? false) {

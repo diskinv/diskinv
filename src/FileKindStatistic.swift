@@ -15,20 +15,23 @@ final class FileKindStatistic: NSObject {
 
     private let _kindName: String
     private var _size: UInt64 = 0
-    private let _items: NSMutableSet
+    //Private backing storage: native Swift set keyed on FSItem identity
+    //(FSItem is an NSObject whose isEqual:/hash are identity-based). The public
+    //`items` (NSSet) and itemEnumerator() bridge to NS* at the boundary.
+    private var _items: Set<FSItem>
 
     @objc(initWithItem:)
     init(item: FSItem) {
         _kindName = item.kindName() ?? ""
         _size = item.sizeValue()
-        _items = NSMutableSet(object: item)
+        _items = [item]
         super.init()
     }
 
     @objc(addItem:)
     func add(_ item: FSItem) {
         assert(!_items.contains(item))
-        _items.add(item)
+        _items.insert(item)
         _size += item.sizeValue()
     }
 
@@ -53,16 +56,16 @@ final class FileKindStatistic: NSObject {
 
     @objc func recalculateSize() {
         _size = 0
-        let itemEnum = _items.objectEnumerator()
-        while let item = itemEnum.nextObject() as? FSItem {
+        for item in _items {
             _size += item.sizeValue()
         }
     }
 
-    @objc var items: NSSet { _items }
+    //bridge the Swift Set back to NSSet to preserve the original return type
+    @objc var items: NSSet { _items as NSSet }
 
     @objc func itemEnumerator() -> NSEnumerator {
-        _items.objectEnumerator()
+        (_items as NSSet).objectEnumerator()
     }
 
     // compare the size descendingly

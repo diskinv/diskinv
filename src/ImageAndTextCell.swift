@@ -36,7 +36,16 @@ class ImageAndTextCell: NSTextFieldCell {
 
     override func copy(with zone: NSZone? = nil) -> Any {
         let cell = super.copy(with: zone) as! ImageAndTextCell
-        cell._image = _image
+        // NSCell.copy(with:) uses NSCopyObject, a raw memory copy that duplicates
+        // the _image pointer WITHOUT retaining it. The previous code then did
+        // `cell._image = _image`, whose ARC store releases that un-retained
+        // pointer — over-releasing the shared NSImage, so it gets freed while a
+        // row still references it and the next draw crashes (use-after-free).
+        // Instead, balance the raw bit-copy with exactly one retain so the copied
+        // cell properly co-owns the image.
+        if let img = cell._image {
+            _ = Unmanaged.passRetained(img)
+        }
         return cell
     }
 

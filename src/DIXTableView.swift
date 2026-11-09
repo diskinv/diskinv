@@ -25,18 +25,11 @@ class DIXTableView: NSTableView {
 
         guard columnIndex >= 0, rowIndex >= 0 else { return nil }
 
-        let contextMenu: NSMenu?
-        // Preserves the original's selector check verbatim: it tests for
-        // tableView:menuForTableColumn:item: yet invokes the ...:row: variant.
-        // No table delegate implements either, so this consistently falls back
-        // to the view's own menu.
-        if let delegate = self.delegate,
-           delegate.responds(to: NSSelectorFromString("tableView:menuForTableColumn:item:")) {
-            let column = tableColumns[columnIndex]
-            contextMenu = (delegate as AnyObject).tableView?(self, menuForTableColumn: column, row: rowIndex)
-        } else {
-            contextMenu = self.menu
-        }
+        // The view's own menu is always used here. (The original guarded a
+        // delegate-supplied menu behind a responds(to:) check for
+        // tableView:menuForTableColumn:item:, but no table delegate ever
+        // implemented that selector, so that path was permanently dead.)
+        let contextMenu = self.menu
 
         // make ourselves first responder when a context menu is about to appear
         if contextMenu != nil, acceptsFirstResponder, window?.firstResponder != self {

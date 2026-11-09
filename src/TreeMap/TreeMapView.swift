@@ -28,6 +28,10 @@ let TreeMapViewItemTouchedNotification = "TreeMapViewItemTouched"
 let TreeMapViewSelectionDidChangedNotification = "TreeMapViewSelectionDidChangeed"
 let TreeMapViewSelectionIsChangingNotification = "TreeMapViewSelectionIsChanging"
 let TMVTouchedItem = "TreeMapViewTouchedItem"
+// present when the touched cell stands for several merged small items of the
+// TMVTouchedItem folder: their count (Int) and summed size (NSNumber)
+let TMVTouchedMergedItemCount = "TreeMapViewTouchedMergedItemCount"
+let TMVTouchedMergedItemSize = "TreeMapViewTouchedMergedItemSize"
 
 // Data Source Note: Specifying nil as the item refers to the "root" item.
 // (there must be one (and only one!) root item)
@@ -311,7 +315,12 @@ final class TreeMapView: NSView, NSViewToolTipOwner {
         toolTip = newToolTip
 
         // post notification about the touched item
-        let userInfo: [AnyHashable: Any] = (touchedItem == nil) ? [:] : [TMVTouchedItem: touchedItem!]
+        var userInfo: [AnyHashable: Any] = (touchedItem == nil) ? [:] : [TMVTouchedItem: touchedItem!]
+        if let touched = _touchedRenderer, touched.isSmallItemsCell {
+            // the item is the folder; say how many of its items the cell stands for
+            userInfo[TMVTouchedMergedItemCount] = touched.mergedItemCount
+            userInfo[TMVTouchedMergedItemSize] = NSNumber(value: touched.weight())
+        }
         NotificationCenter.default.post(name: NSNotification.Name(TreeMapViewItemTouchedNotification),
                                         object: self, userInfo: userInfo)
     }
@@ -337,6 +346,11 @@ final class TreeMapView: NSView, NSViewToolTipOwner {
     @objc
     func selectedItem() -> Any? {
         _selectedRenderer?.item()
+    }
+
+    @objc
+    func selectedCellId() -> TMVCellId? {
+        _selectedRenderer
     }
 
     @objc(itemByCellId:)
@@ -657,6 +671,11 @@ final class TreeMapView: NSView, NSViewToolTipOwner {
 
             guard let foundChild = child else {
                 return nil // not found
+            }
+            // a child too small to draw was merged into its parent's
+            // small-items cell; that cell stands for it (and its descendants)
+            if foundChild.isMergedIntoParent {
+                return parent.smallItemsRenderer
             }
             parent = foundChild
         }

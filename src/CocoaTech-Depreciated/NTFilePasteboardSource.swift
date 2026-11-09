@@ -17,12 +17,39 @@
 
 import Cocoa
 import CoreServices
+#if canImport(UniformTypeIdentifiers)
+import UniformTypeIdentifiers
+#endif
 
 // Legacy pasteboard type constants whose Swift globals are unavailable; kept as
 // the same raw strings the original ObjC code used.
 private let kFilenamesType = NSPasteboard.PasteboardType("NSFilenamesPboardType")
 private let kFileContentsType = NSPasteboard.PasteboardType("NSFileContentsPboardType")
 private let kPostScriptType = NSPasteboard.PasteboardType("NSPostScriptPboardType")
+
+// UTI helpers. On macOS 11+ they use the modern UniformTypeIdentifiers
+// framework; on older systems they fall back to the deprecated CoreServices
+// APIs, preserving the original code's exact comparison semantics (string
+// equality for concrete types, conformance for the generic image check).
+
+// Legacy fallback: exact UTI string equality (matches the original
+// `uti == (kUTType... as String)` checks).
+private func utiEquals(_ uti: String?, _ legacyType: CFString) -> Bool {
+    guard let uti = uti else { return false }
+    return uti == (legacyType as String)
+}
+
+// Legacy fallback: UTI conformance (matches the original UTTypeConformsTo call).
+private func utiConformsLegacy(_ uti: String?, to legacyType: CFString) -> Bool {
+    guard let uti = uti else { return false }
+    return UTTypeConformsTo(uti as CFString, legacyType)
+}
+
+@available(macOS 11.0, *)
+private func utiConforms(_ uti: String?, to type: UTType) -> Bool {
+    guard let uti = uti, let fileType = UTType(uti) else { return false }
+    return fileType.conforms(to: type)
+}
 
 @objc(NTFilePasteboardSource)
 class NTFilePasteboardSource: NSObject {
@@ -101,13 +128,13 @@ class NTFilePasteboardSource: NSObject {
                 pasteTypes.append(type)
             } else if type == .tiff { // we use the icon if not an image, so don't check isImage
                 pasteTypes.append(type)
-            } else if type == .rtf, uti == (kUTTypeRTF as String) {
+            } else if type == .rtf, Self.utiIsRTF(uti) {
                 pasteTypes.append(type)
-            } else if type == .rtfd, uti == (kUTTypeFlatRTFD as String) {
+            } else if type == .rtfd, Self.utiIsFlatRTFD(uti) {
                 pasteTypes.append(type)
-            } else if type == .html, uti == (kUTTypeHTML as String) {
+            } else if type == .html, Self.utiIsHTML(uti) {
                 pasteTypes.append(type)
-            } else if type == .pdf, uti == (kUTTypePDF as String) {
+            } else if type == .pdf, Self.utiIsPDF(uti) {
                 pasteTypes.append(type)
             }
         }
@@ -138,11 +165,11 @@ class NTFilePasteboardSource: NSObject {
             // write the contents
             pboard.writeFileContents(url.path ?? "")
         } else if type == .tiff {
-            if uti == (kUTTypeTIFF as String) {
+            if Self.utiIsTIFF(uti) {
                 if let data = NSData(contentsOfFile: url.path ?? "") as Data? {
                     pboard.setData(data, forType: .tiff)
                 }
-            } else if let uti = uti, UTTypeConformsTo(uti as CFString, kUTTypeImage) {
+            } else if Self.utiIsImage(uti) {
                 // open the image and return TIFFRepresentation
                 if let image = NSImage(contentsOfFile: url.path ?? ""),
                    let data = image.tiffRepresentation {
@@ -153,23 +180,67 @@ class NTFilePasteboardSource: NSObject {
                 // NTFilePasteBoardSource: providing file icon not implemented (matches original)
             }
         } else if type == .rtf {
-            if uti == (kUTTypeRTF as String), let data = NSData(contentsOfFile: url.path ?? "") as Data? {
+            if Self.utiIsRTF(uti), let data = NSData(contentsOfFile: url.path ?? "") as Data? {
                 pboard.setData(data, forType: .rtf)
             }
         } else if type == .rtfd {
-            if uti == (kUTTypeFlatRTFD as String) {
+            if Self.utiIsFlatRTFD(uti) {
                 if let tempRTFDData = try? FileWrapper(url: url as URL, options: []) {
                     pboard.setData(tempRTFDData.serializedRepresentation ?? Data(), forType: .rtfd)
                 }
             }
         } else if type == .html {
-            if uti == (kUTTypeHTML as String), let data = NSData(contentsOfFile: url.path ?? "") as Data? {
+            if Self.utiIsHTML(uti), let data = NSData(contentsOfFile: url.path ?? "") as Data? {
                 pboard.setData(data, forType: .html)
             }
         } else if type == .pdf {
-            if uti == (kUTTypePDF as String), let data = NSData(contentsOfFile: url.path ?? "") as Data? {
+            if Self.utiIsPDF(uti), let data = NSData(contentsOfFile: url.path ?? "") as Data? {
                 pboard.setData(data, forType: .pdf)
             }
         }
+    }
+
+    // MARK: - UTI type checks (modern UniformTypeIdentifiers, legacy fallback)
+
+    private static func utiIsRTF(_ uti: String?) -> Bool {
+        if #available(macOS 11.0, *) {
+            return utiConforms(uti, to: .rtf)
+        }
+        return utiEquals(uti, kUTTypeRTF)
+    }
+
+    private static func utiIsFlatRTFD(_ uti: String?) -> Bool {
+        if #available(macOS 11.0, *) {
+            return utiConforms(uti, to: .flatRTFD)
+        }
+        return utiEquals(uti, kUTTypeFlatRTFD)
+    }
+
+    private static func utiIsHTML(_ uti: String?) -> Bool {
+        if #available(macOS 11.0, *) {
+            return utiConforms(uti, to: .html)
+        }
+        return utiEquals(uti, kUTTypeHTML)
+    }
+
+    private static func utiIsPDF(_ uti: String?) -> Bool {
+        if #available(macOS 11.0, *) {
+            return utiConforms(uti, to: .pdf)
+        }
+        return utiEquals(uti, kUTTypePDF)
+    }
+
+    private static func utiIsTIFF(_ uti: String?) -> Bool {
+        if #available(macOS 11.0, *) {
+            return utiConforms(uti, to: .tiff)
+        }
+        return utiEquals(uti, kUTTypeTIFF)
+    }
+
+    private static func utiIsImage(_ uti: String?) -> Bool {
+        if #available(macOS 11.0, *) {
+            return utiConforms(uti, to: .image)
+        }
+        return utiConformsLegacy(uti, to: kUTTypeImage)
     }
 }

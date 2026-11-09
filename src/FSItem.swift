@@ -16,6 +16,11 @@
 
 import Cocoa
 import CoreServices
+import os   //os_unfair_lock
+
+#if canImport(UniformTypeIdentifiers)
+import UniformTypeIdentifiers
+#endif
 
 //MARK: - delegate informal protocol -> @objc protocol
 
@@ -27,8 +32,40 @@ import CoreServices
     @objc optional func fsItemShouldUsePhysicalFileSize(_ item: FSItem) -> Bool
 }
 
-//global cache for kind names
+//global cache for kind names.
+//
+//During the parallel scan multiple worker threads call
+//setKindStringIncludingChildren concurrently, all reading/writing this cache.
+//Its contents are a pure function of the UTI identifier string, so a
+//serialized get-or-compute is correct. We guard every access with
+//g_kindNameDictionaryLock (an os_unfair_lock wrapped in a tiny helper). The
+//serial path goes through the same locked accessor, so behavior is identical.
 private var g_kindNameDictionary = NSMutableDictionary()
+private var g_kindNameDictionaryLock = UnfairLock()
+
+//Minimal os_unfair_lock wrapper. os_unfair_lock is available since 10.12, well
+//under the 10.13 deployment target, and is cheaper than NSLock for the very
+//short critical sections used here. The lock value is held in a heap box so the
+//struct can be a `let` global without tripping Swift's exclusive-access checks
+//on the mutating lock/unlock calls.
+final class UnfairLock {
+    private let _lock: os_unfair_lock_t = {
+        let p = UnsafeMutablePointer<os_unfair_lock>.allocate(capacity: 1)
+        p.initialize(to: os_unfair_lock())
+        return p
+    }()
+
+    deinit {
+        _lock.deinitialize(count: 1)
+        _lock.deallocate()
+    }
+
+    func withLock<T>(_ body: () -> T) -> T {
+        os_unfair_lock_lock(_lock)
+        defer { os_unfair_lock_unlock(_lock) }
+        return body()
+    }
+}
 
 //MARK: - scan errors (replaces the former ObjC NSException-based cancellation)
 
@@ -39,6 +76,64 @@ private var g_kindNameDictionary = NSMutableDictionary()
 enum FSItemError: Error {
     case loadingCanceled   //delegate canceled the loading
     case loadingFailed     //error while enumerating files/folders
+}
+
+//MARK: - thread-safe scan progress / cancel channel
+
+//Shared between the background scan (coordinator + workers) and the main-thread
+//progress pump. All access is guarded by an internal lock so reads/writes never
+//tear. Workers only ever WRITE foldersScanned/currentPath and READ cancelled;
+//the main thread READs progress, WRITES cancelled, and READs/WRITES finished.
+final class ScanProgress {
+    private let lock = UnfairLock()
+    private var _foldersScanned: Int = 0
+    private var _currentPath: String = ""
+    private var _cancelled: Bool = false
+    private var _finished: Bool = false
+
+    var foldersScanned: Int {
+        get { lock.withLock { _foldersScanned } }
+        set { lock.withLock { _foldersScanned = newValue } }
+    }
+
+    var currentPath: String {
+        get { lock.withLock { _currentPath } }
+        set { lock.withLock { _currentPath = newValue } }
+    }
+
+    var cancelled: Bool {
+        get { lock.withLock { _cancelled } }
+        set { lock.withLock { _cancelled = newValue } }
+    }
+
+    var finished: Bool {
+        get { lock.withLock { _finished } }
+        set { lock.withLock { _finished = newValue } }
+    }
+
+    private var _itemsScanned: Int = 0
+    private var _bytesScanned: UInt64 = 0
+
+    //files + folders found so far
+    var itemsScanned: Int {
+        lock.withLock { _itemsScanned }
+    }
+
+    //size of the files found so far
+    var bytesScanned: UInt64 {
+        lock.withLock { _bytesScanned }
+    }
+
+    //Record one listed folder: bump the counters and the current path in one
+    //locked section (scan operations call this once per directory).
+    func noteScannedFolder(path: String, items: Int, bytes: UInt64) {
+        lock.withLock {
+            _foldersScanned += 1
+            _itemsScanned += items
+            _bytesScanned += bytes
+            _currentPath = path
+        }
+    }
 }
 
 @objc(FSItem) final class FSItem: NSObject {
@@ -52,7 +147,10 @@ enum FSItemError: Error {
     private var _size: NSNumber?
     private var _sizeValue: UInt64 = 0
     private var _kindName: String?
-    private var _childs: NSMutableArray?
+    //Private backing storage: native Swift array of child items. The public
+    //accessors (childEnumerator/childAtIndex:/childCount) keep their original
+    //return types and bridge to NS* at the boundary.
+    private var _childs: [FSItem]?
     //non-owning, like the original __unsafe_unretained id
     private unowned(unsafe) var _delegate: AnyObject?
 
@@ -75,7 +173,7 @@ enum FSItemError: Error {
         _type = FileFolderItem
         _fileURL = url
         if url.isDirectory() {
-            _childs = NSMutableArray()
+            _childs = []
         }
         _parent = nil   //we are the root item
     }
@@ -104,7 +202,7 @@ enum FSItemError: Error {
         _parent = parent   //no retain
 
         if let parent = parent {
-            parent._childs?.add(self)
+            parent._childs?.append(self)
         }
 
         _fileURL = url
@@ -118,7 +216,7 @@ enum FSItemError: Error {
                 setSizeValue(url.logicalSize().uint64Value)
             }
         } else {
-            _childs = NSMutableArray()
+            _childs = []
         }
 
         if setKindString {
@@ -132,10 +230,50 @@ enum FSItemError: Error {
         }
     }
 
+    //Parallel-scan node initializer. Identical to the designated scanner init
+    //above EXCEPT it does not mutate the g_fileCount/g_folderCount globals;
+    //instead it tallies into the worker-local `counts` (merged after join). Used
+    //only from a single worker thread for nodes within that worker's disjoint
+    //subtree, so the parent._childs append is the sole writer of that array.
+    init(url: NSURL, parent: FSItem?, setKindString: Bool, usePhysicalSize: Bool,
+         counts: inout ScanCounts) {
+        super.init()
+        _type = FileFolderItem
+        _parent = parent   //no retain
+
+        if let parent = parent {
+            parent._childs?.append(self)
+        }
+
+        _fileURL = url
+
+        let isFolder = url.isDirectory()
+
+        if !isFolder {
+            if usePhysicalSize {
+                setSizeValue(url.physicalSize().uint64Value)
+            } else {
+                setSizeValue(url.logicalSize().uint64Value)
+            }
+        } else {
+            _childs = []
+        }
+
+        if setKindString {
+            setKindStringIncludingChildren(false)
+        }
+
+        if isFolder {
+            counts.folders += 1
+        } else {
+            counts.files += 1
+        }
+    }
+
     deinit {
         //nil out children's non-owning back-reference before ARC releases _childs
         if let childs = _childs {
-            for case let child as FSItem in childs {
+            for child in childs {
                 child.onParentDealloc()
             }
         }
@@ -285,13 +423,23 @@ enum FSItemError: Error {
         let key = NSNumber(value: iconSize)
         var icon = _icons?.object(forKey: key) as AnyObject?
         if icon == nil {
-            let img = NSWorkspace.shared.icon(forFile: fileURL()?.path ?? "")
-            img.size = NSMakeSize(CGFloat(iconSize), CGFloat(iconSize))
-            icon = img
-            if icon == nil {
-                icon = NSNull()
-            }
-            _icons?.setObject(icon!, forKey: key)
+            //NSWorkspace.icon(forFile:) hands back an NSImage backed by a SHARED,
+            //lazily-evaluated icon-rep provider (NSImageISIconRepProvider). That
+            //provider can be released out from under us elsewhere, leaving our
+            //cached image with a dangling provider that crashes on the next draw
+            //(use-after-free in the table/outline cell). Rasterize into a small,
+            //self-contained bitmap so the cached icon owns its pixels outright and
+            //holds no reference to NSWorkspace's shared provider.
+            let size = NSMakeSize(CGFloat(iconSize), CGFloat(iconSize))
+            let source = NSWorkspace.shared.icon(forFile: fileURL()?.path ?? "")
+            let baked = NSImage(size: size)
+            baked.lockFocus()
+            NSGraphicsContext.current?.imageInterpolation = .high
+            source.draw(in: NSRect(origin: .zero, size: size),
+                        from: .zero, operation: .sourceOver, fraction: 1.0)
+            baked.unlockFocus()
+            icon = baked
+            _icons?.setObject(baked, forKey: key)
         }
 
         if icon is NSNull {
@@ -305,7 +453,8 @@ enum FSItemError: Error {
     @objc(childEnumerator)
     func childEnumerator() -> NSEnumerator? {
         if !isSpecialItem() {
-            return _childs?.objectEnumerator()
+            //bridge to NSArray to preserve the original NSEnumerator return type
+            return (_childs as NSArray?)?.objectEnumerator()
         } else {
             return nil
         }
@@ -314,7 +463,7 @@ enum FSItemError: Error {
     @objc(childAtIndex:)
     func child(at index: UInt) -> FSItem? {
         if !isSpecialItem() {
-            return _childs?.object(at: Int(index)) as? FSItem
+            return _childs?[Int(index)]
         } else {
             return nil
         }
@@ -333,15 +482,16 @@ enum FSItemError: Error {
     func removeChild(_ child: FSItem, updateParent: Bool) {
         assert(!isSpecialItem(), "removeChild is illegal call for special item")
 
-        guard let childs = _childs else { return }
-        let index = childs.indexOfObjectIdentical(to: child)
-        if index != NSNotFound {
+        guard var childs = _childs else { return }
+        //identity match, mirroring NSMutableArray.indexOfObjectIdenticalTo:
+        if let index = childs.firstIndex(where: { $0 === child }) {
             let myOldSize = sizeValue()
             let myNewSize = myOldSize - child.sizeValue()
 
             setSizeValue(myNewSize)
 
-            childs.removeObject(at: index)
+            childs.remove(at: index)
+            _childs = childs
 
             if updateParent && !isRoot() {
                 parent()!.childChanged(self, oldSize: myOldSize, newSize: myNewSize)
@@ -355,15 +505,15 @@ enum FSItemError: Error {
 
         newChild.setParent(self)
 
-        //insert child sorted by size
-        guard let childs = _childs else { return }
-        let insertIndex = childs.index(of: newChild,
-                                       inSortedRange: NSMakeRange(0, childs.count),
-                                       options: .insertionIndex,
-                                       usingComparator: { (a, b) -> ComparisonResult in
-                                           return (a as! FSItem).compareSizeDescendingly(b as! FSItem)
-                                       })
+        //insert child sorted by size (descending), mirroring the former
+        //-indexOfObject:inSortedRange:options:NSBinarySearchingInsertionIndex
+        //usingComparator: with compareSizeDescendingly.
+        guard var childs = _childs else { return }
+        let insertIndex = FSItem.sortedInsertionIndex(of: newChild, in: childs) {
+            $0.compareSizeDescendingly($1)
+        }
         childs.insert(newChild, at: insertIndex)
+        _childs = childs
 
         setSizeValue(sizeValue() + newChild.sizeValue())
 
@@ -388,6 +538,13 @@ enum FSItemError: Error {
 
     //if this is a folder, load all containing files
     //Called only by FileSystemDoc (now Swift), so no @objc exposure is needed.
+    //
+    //This is the SERIAL entry point, kept for the (rare) callers that drive the
+    //scan inline on the calling thread and rely on the delegate enter/exit
+    //callbacks for progress (it pumps the runloop via fsItemEnteringFolder:).
+    //The parallel scan is orchestrated separately by the document via
+    //loadChildrenParallel(params:progress:) so the main thread stays free to
+    //pump the progress panel; see FileSystemDoc.readFromFolder.
     func loadChildren() throws {
         var usePhysicalSize = false
 
@@ -396,7 +553,53 @@ enum FSItemError: Error {
         }
 
         //use new optimized version of loadChilds
-        try loadChildrenAndSetKindStrings(true, usePhysicalSize: usePhysicalSize)
+        try loadChildrenSerial(true, usePhysicalSize: usePhysicalSize)
+    }
+
+    //MARK: ----------------- parallel scan: toggle / params / progress ----------
+
+    //Runtime A/B toggle. Default TRUE (parallel). Set the environment variable
+    //DIX_PARALLEL_SCAN=0 to force the original serial path in the same binary,
+    //so the two can be diffed for byte-identical results.
+    static let parallelScanEnabled: Bool = {
+        if ProcessInfo.processInfo.environment["DIX_PARALLEL_SCAN"] == "0" {
+            return false
+        }
+        return true
+    }()
+
+    //Immutable snapshot of the behavior flags, taken ONCE on the main thread
+    //before any worker is dispatched. Workers read this struct instead of
+    //calling the (main-thread-only) FSItemDelegate. Value type => freely shared
+    //by copy across threads with no synchronization.
+    struct ScanParams {
+        let setKindStrings: Bool
+        let usePhysicalSize: Bool
+        let lookIntoPackages: Bool   //snapshot of fsItemShouldLookIntoPackages
+    }
+
+    //Build the ScanParams by querying the delegate. MUST be called on the main
+    //thread (the delegate touches document/UI state).
+    func makeScanParams(setKindStrings: Bool) -> ScanParams {
+        let d = delegateAsFSItemDelegate
+        var usePhysicalSize = false
+        if let d = d, let r = d.fsItemShouldUsePhysicalFileSize?(self) { usePhysicalSize = r }
+        var lookInto = false
+        if let d = d, let r = d.fsItemShouldLookIntoPackages?(self) { lookInto = r }
+        return ScanParams(setKindStrings: setKindStrings,
+                          usePhysicalSize: usePhysicalSize,
+                          lookIntoPackages: lookInto)
+    }
+
+    //Per-worker scan tallies. Accumulated locally inside a worker's serial
+    //descent (no shared global mutation), then merged after join and assigned to
+    //the g_fileCount/g_folderCount globals on the coordinator. (Debug-only.)
+    struct ScanCounts {
+        var files: UInt32 = 0
+        var folders: UInt32 = 0
+        static func + (a: ScanCounts, b: ScanCounts) -> ScanCounts {
+            ScanCounts(files: a.files + b.files, folders: a.folders + b.folders)
+        }
     }
 
     //MARK: ----------------- sizes -----------------------
@@ -438,15 +641,18 @@ enum FSItemError: Error {
         switch _type {
         case FileFolderItem:
             if isFolder() {
-                if let childs = _childs {
+                if var childs = _childs {
                     var i = childs.count
                     while i > 0 {
                         i -= 1
-                        let child = childs.object(at: i) as! FSItem
+                        let child = childs[i]
                         child.recalculateSize(usePhysicalSize, updateParent: false)
                         size += child.sizeValue()
                     }
-                    childs.sort(using: #selector(FSItem.compareSizeDescendingly(_:)))
+                    //sort descending by size, mirroring the former
+                    //NSMutableArray.sortUsingSelector(compareSizeDescendingly:)
+                    childs.sort { $0.compareSizeDescendingly($1) == .orderedAscending }
+                    _childs = childs
                 }
             } else {
                 //File
@@ -517,15 +723,19 @@ enum FSItemError: Error {
         let uti = _fileURL?.cachedUTI()
 
         if let uti = uti {
-            _kindName = g_kindNameDictionary.object(forKey: uti) as? String
-
-            if _kindName == nil {
-                _kindName = UTTypeCopyDescription(uti as CFString)?.takeRetainedValue() as String?
-
+            //Lock-protected get-or-compute. Safe to call from parallel scan
+            //workers: the cache contents depend only on `uti`, so a serialized
+            //lookup yields the same kind name regardless of thread order.
+            _kindName = g_kindNameDictionaryLock.withLock {
+                if let cached = g_kindNameDictionary.object(forKey: uti) as? String {
+                    return cached
+                }
+                let computed = FSItem.localizedDescription(forUTI: uti)
                 //remember kind name for similar files
-                if let kn = _kindName {
+                if let kn = computed {
                     g_kindNameDictionary.setObject(kn, forKey: uti as NSString)
                 }
+                return computed
             }
         } else {
             _kindName = nil
@@ -543,6 +753,63 @@ enum FSItemError: Error {
                 child(at: i)?.setKindStringIncludingChildren(true)
             }
         }
+    }
+
+    //MARK: ----------------- UTI helpers -----------------------
+    //
+    //These wrap the modern UniformTypeIdentifiers framework (macOS 11+) with a
+    //fallback to the deprecated CoreServices UTType* C APIs for the project's
+    //10.13 deployment target. The cached UTI is a plain identifier string (as
+    //returned by NSURL.cachedUTI / typeIdentifierKey), so these helpers operate
+    //on identifier strings to preserve the exact pre-existing behavior.
+
+    //localized "kind" description for a UTI identifier (e.g. "Rich Text Document")
+    private static func localizedDescription(forUTI uti: String) -> String? {
+        if #available(macOS 11.0, *) {
+            return UTType(uti)?.localizedDescription
+        } else {
+            return UTTypeCopyDescription(uti as CFString)?.takeRetainedValue() as String?
+        }
+    }
+
+    //does the file's UTI identifier conform to the image type?
+    private static func utiConformsToImage(_ uti: String) -> Bool {
+        if #available(macOS 11.0, *) {
+            return UTType(uti)?.conforms(to: .image) ?? false
+        } else {
+            return UTTypeConformsTo(uti as CFString, kUTTypeImage)
+        }
+    }
+
+    //identifier strings for the small set of well-known types this class
+    //compares against by identity. Using the framework constant's identifier
+    //yields the exact same string the legacy kUTType* constants produced
+    //(e.g. "public.rtf"), so behavior is unchanged.
+    private enum UTIIdentifier {
+        static let rtf: String = {
+            if #available(macOS 11.0, *) { return UTType.rtf.identifier }
+            return kUTTypeRTF as String
+        }()
+        static let rtfd: String = {
+            if #available(macOS 11.0, *) { return UTType.rtfd.identifier }
+            return kUTTypeRTFD as String
+        }()
+        static let flatRTFD: String = {
+            if #available(macOS 11.0, *) { return UTType.flatRTFD.identifier }
+            return kUTTypeFlatRTFD as String
+        }()
+        static let tiff: String = {
+            if #available(macOS 11.0, *) { return UTType.tiff.identifier }
+            return kUTTypeTIFF as String
+        }()
+        static let html: String = {
+            if #available(macOS 11.0, *) { return UTType.html.identifier }
+            return kUTTypeHTML as String
+        }()
+        static let pdf: String = {
+            if #available(macOS 11.0, *) { return UTType.pdf.identifier }
+            return kUTTypePDF as String
+        }()
     }
 
     //MARK: names / paths
@@ -679,6 +946,29 @@ enum FSItemError: Error {
         }
     }
 
+    //Binary-search insertion index into a comparator-sorted array, replicating
+    //-[NSArray indexOfObject:inSortedRange:options:NSBinarySearchingInsertionIndex
+    //usingComparator:]. Returns the index at which `element` can be inserted to
+    //keep the array ordered. For runs of comparator-equal elements this returns
+    //the upper bound of that run (a valid insertion point), matching the
+    //sorted-order result the original produced.
+    private static func sortedInsertionIndex(of element: FSItem,
+                                             in array: [FSItem],
+                                             comparator: (FSItem, FSItem) -> ComparisonResult) -> Int {
+        var lo = 0
+        var hi = array.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            //element < array[mid]  => insert in lower half
+            if comparator(element, array[mid]) == .orderedAscending {
+                hi = mid
+            } else {
+                lo = mid + 1
+            }
+        }
+        return lo
+    }
+
     //MARK: ----------------- child change propagation -----------------------
 
     @objc(childChanged:oldSize:newSize:)
@@ -701,9 +991,14 @@ enum FSItemError: Error {
         }
     }
 
-    //MARK: ----------------- the scanner -----------------------
-
-    func loadChildrenAndSetKindStrings(_ setKindStringsParam: Bool, usePhysicalSize: Bool) throws {
+    //MARK: ----------------- the scanner (serial) -----------------------
+    //
+    //PRESERVED UNCHANGED as the `parallelScanEnabled == false` path. This is the
+    //original flat-enumerator deep walk; it drives progress/cancel through the
+    //fsItemEnteringFolder:/fsItemExittingFolder: delegate callbacks (which pump
+    //the runloop) and increments g_fileCount/g_folderCount via the per-item
+    //initializer. Do not change its behavior — it is the byte-identical baseline.
+    func loadChildrenSerial(_ setKindStringsParam: Bool, usePhysicalSize: Bool) throws {
         if !isFolder() {
             return
         }
@@ -716,7 +1011,7 @@ enum FSItemError: Error {
             throw FSItemError.loadingCanceled
         }
 
-        _childs = NSMutableArray()
+        _childs = []
 
         //should the kind strings of our childs be set initially? (optimization)
         if setKindStrings && !isRoot() {
@@ -805,7 +1100,7 @@ enum FSItemError: Error {
                         // firmlinks are not followed by NSDirectoryEnumerator, but Apple may
                         // change that, so we tell the enumerator to not enter the directory
                         dirEnum.skipDescendants()
-                        try currentItem.loadChildrenAndSetKindStrings(setKindStrings, usePhysicalSize: usePhysicalSize)
+                        try currentItem.loadChildrenSerial(setKindStrings, usePhysicalSize: usePhysicalSize)
                     } else if currentUrl.isVolume() {
                         // on 10.15 Beta 7 the mount point /System/Volume/data is followed,
                         // although this should not be the case according to the docs
@@ -830,6 +1125,195 @@ enum FSItemError: Error {
         recalculateSize(true, updateParent: false)
     }
 
+    //MARK: ----------------- the scanner (parallel) -----------------------
+    //
+    //Runs on a background queue (the document keeps the main thread free to
+    //pump the progress panel). Each DIRECTORY is one unit of work on an
+    //OperationQueue capped at activeProcessorCount - 1:
+    //
+    //  - An operation lists one directory, creates its children (appending to
+    //    that directory's _childs; it is the sole writer), and enqueues one
+    //    operation per subdirectory. Operations never block on each other, so
+    //    every core stays busy even when one top-level folder holds most of the
+    //    tree (the former one-worker-per-top-level-folder split ran such scans
+    //    almost serially).
+    //  - Each directory counts down its outstanding work (its own listing plus
+    //    each subdirectory's whole subtree). Whoever brings it to zero finalizes
+    //    it: file sizes (physical), folder size, and children sorted by size.
+    //    That replaces the former main-thread recalculateSize pass, so when
+    //    this returns, the whole tree, root included, is sized and sorted.
+    //  - Counts are tallied per operation and merged under a lock; the globals
+    //    are written once, here, after the join.
+    //
+    //Throws FSItemError.loadingCanceled if progress.cancelled becomes true.
+    //Kind statistics are still collected by the caller on the main thread.
+    private static let scanResourceKeys: [URLResourceKey] = [
+        .nameKey,
+        .isVolumeKey,
+        .isPackageKey,
+        .isDirectoryKey,
+        .typeIdentifierKey,
+        .fileSizeKey,
+        .totalFileAllocatedSizeKey
+    ]
+
+    //Outstanding-work counter for one directory of the parallel scan.
+    private final class ScanDirTask {
+        let item: FSItem
+        let parent: ScanDirTask?
+        var remaining = 1   //own listing + subdirectory subtrees; guarded by the scan lock
+        init(item: FSItem, parent: ScanDirTask?) {
+            self.item = item
+            self.parent = parent
+        }
+    }
+
+    func loadChildrenParallel(params: ScanParams, progress: ScanProgress) throws {
+        if !isFolder() {
+            return
+        }
+
+        _childs = []
+
+        let queue = OperationQueue()
+        queue.name = "com.derlien.diskinventoryx.scan"
+        queue.maxConcurrentOperationCount = max(1, ProcessInfo.processInfo.activeProcessorCount - 1)
+        queue.qualityOfService = .userInitiated
+
+        let group = DispatchGroup()
+        let lock = UnfairLock()
+        var merged = ScanCounts()
+
+        //a unit of `task`'s work is done; finalize every directory whose
+        //subtree this completes, walking up toward the root
+        func workDone(_ task: ScanDirTask) {
+            var current: ScanDirTask? = task
+            while let dir = current {
+                let complete = lock.withLock { () -> Bool in
+                    dir.remaining -= 1
+                    return dir.remaining == 0
+                }
+                if !complete {
+                    return
+                }
+                dir.item.finalizeScannedFolder()
+                current = dir.parent
+            }
+        }
+
+        func submit(_ task: ScanDirTask) {
+            group.enter()
+            queue.addOperation {
+                defer { group.leave() }
+                if progress.cancelled {
+                    return
+                }
+
+                var counts = ScanCounts()
+                var subdirs: [FSItem] = []
+                var bytes: UInt64 = 0
+                var path = ""
+                autoreleasepool {
+                    let dirURL = task.item.fileURL()!
+                    path = dirURL.cachedPath()
+                    for entryURL in FSItem.directoryEntries(of: dirURL) {
+                        entryURL.cacheResources(in: FSItem.scanResourceKeys)
+                        let child = FSItem(url: entryURL, parent: task.item,
+                                           setKindString: params.setKindStrings,
+                                           usePhysicalSize: params.usePhysicalSize,
+                                           counts: &counts)
+                        //descend into directories, except volume mount points
+                        //(matches the serial walk, which skips volume descendants)
+                        if entryURL.isDirectory() && !entryURL.isVolume() {
+                            subdirs.append(child)
+                        } else {
+                            bytes += child.sizeValue()
+                        }
+                    }
+                }
+
+                progress.noteScannedFolder(path: path,
+                                           items: Int(counts.files + counts.folders),
+                                           bytes: bytes)
+                lock.withLock {
+                    merged = merged + counts
+                    task.remaining += subdirs.count
+                }
+                for subdir in subdirs {
+                    submit(ScanDirTask(item: subdir, parent: task))
+                }
+                workDone(task)
+            }
+        }
+
+        submit(ScanDirTask(item: self, parent: nil))
+        group.wait()
+
+        if progress.cancelled {
+            throw FSItemError.loadingCanceled
+        }
+
+        //publish the globals (coordinator-only write)
+        g_fileCount += merged.files
+        g_folderCount += merged.folders
+    }
+
+    //Finalize a scanned folder whose subfolders are all final: physical file
+    //sizes, the folder's size, and children sorted by size (descending). Gives
+    //the same result as recalculateSize(true, updateParent: false) without
+    //re-walking the (already final) subfolders, and fetches each child's name
+    //once instead of once per comparison.
+    private func finalizeScannedFolder() {
+        guard let childs = _childs else {
+            recalculateSize(true, updateParent: false)
+            return
+        }
+
+        var size: UInt64 = 0
+        var keyed: [(size: UInt64, name: String, item: FSItem)] = []
+        keyed.reserveCapacity(childs.count)
+        for child in childs {
+            //files get their physical size; a subfolder is already final, except
+            //an undescended one (volume mount point), which is empty and cheap
+            if !child.isFolder() || (child._childs?.isEmpty ?? true) {
+                child.recalculateSize(true, updateParent: false)
+            }
+            size += child.sizeValue()
+            keyed.append((child.sizeValue(), child.name(), child))
+        }
+
+        //same order as sort { $0.compareSizeDescendingly($1) == .orderedAscending }:
+        //bigger first; equal sizes by name, descending
+        keyed.sort { a, b in
+            if a.size != b.size {
+                return a.size > b.size
+            }
+            return (a.name as NSString).compare(asFilesystemName: b.name) == .orderedDescending
+        }
+
+        _childs = keyed.map { $0.item }
+        setSizeValue(size)
+    }
+
+    //Per-directory listing with the same prefetched resource keys the serial
+    //walk uses. A fresh NSURL is produced per entry, so concurrent operations
+    //never share a URL object (thread-confined resource cache). Errors listing
+    //a directory are swallowed (treated as empty), mirroring the serial
+    //enumerator's errorHandler which continues past per-item errors.
+    private static func directoryEntries(of dirURL: NSURL) -> [NSURL] {
+        do {
+            let urls = try FileManager.default.contentsOfDirectory(
+                at: dirURL as URL,
+                includingPropertiesForKeys: scanResourceKeys,
+                options: [])
+            return urls.map { $0 as NSURL }
+        } catch {
+            //a problem listing this directory: treat as empty (the serial
+            //enumerator likewise continues past subdirectory errors).
+            return []
+        }
+    }
+
     //MARK: ----------------- pasteboard support -----------------------
 
     @objc(supportedPasteboardTypes)
@@ -843,19 +1327,19 @@ enum FSItemError: Error {
 
         let uti = fileURL()?.cachedUTI()
 
-        func testType(_ test: CFString, _ type: NSPasteboard.PasteboardType) {
-            if let uti = uti, uti == (test as String) {
+        func testType(_ testIdentifier: String, _ type: NSPasteboard.PasteboardType) {
+            if let uti = uti, uti == testIdentifier {
                 types.append(type)
             }
         }
 
-        testType(kUTTypeRTF, NSPasteboard.PasteboardType.rtf)
-        testType(kUTTypeRTFD, NSPasteboard.PasteboardType.rtfd)
-        testType(kUTTypeHTML, NSPasteboard.PasteboardType.html)
-        testType(kUTTypePDF, NSPasteboard.PasteboardType.pdf)
+        testType(UTIIdentifier.rtf, NSPasteboard.PasteboardType.rtf)
+        testType(UTIIdentifier.rtfd, NSPasteboard.PasteboardType.rtfd)
+        testType(UTIIdentifier.html, NSPasteboard.PasteboardType.html)
+        testType(UTIIdentifier.pdf, NSPasteboard.PasteboardType.pdf)
 
         // add TIFF if this is an image
-        if let uti = uti, UTTypeConformsTo(uti as CFString, kUTTypeImage) {
+        if let uti = uti, FSItem.utiConformsToImage(uti) {
             types.append(NSPasteboard.PasteboardType.tiff)
         }
 
@@ -870,9 +1354,9 @@ enum FSItemError: Error {
         return type == "NSFilenamesPboardType"
             || type == NSPasteboard.PasteboardType.string.rawValue
             || type == "NSFileContentsPboardType"
-            || (type == NSPasteboard.PasteboardType.tiff.rawValue && uti != nil && UTTypeConformsTo(uti! as CFString, kUTTypeImage))
-            || (type == NSPasteboard.PasteboardType.rtf.rawValue && uti == (kUTTypeRTF as String))
-            || (type == NSPasteboard.PasteboardType.rtfd.rawValue && uti == (kUTTypeFlatRTFD as String))
+            || (type == NSPasteboard.PasteboardType.tiff.rawValue && uti != nil && FSItem.utiConformsToImage(uti!))
+            || (type == NSPasteboard.PasteboardType.rtf.rawValue && uti == UTIIdentifier.rtf)
+            || (type == NSPasteboard.PasteboardType.rtfd.rawValue && uti == UTIIdentifier.flatRTFD)
             || (type == NSPasteboard.PasteboardType.html.rawValue && uti == NSPasteboard.PasteboardType.html.rawValue)
             || (type == NSPasteboard.PasteboardType.pdf.rawValue && uti == NSPasteboard.PasteboardType.pdf.rawValue)
     }
@@ -903,11 +1387,11 @@ enum FSItemError: Error {
             // write the contents
             pboard.writeFileContents(path)
         } else if type == NSPasteboard.PasteboardType.tiff.rawValue {
-            if uti == (kUTTypeTIFF as String) {
+            if uti == UTIIdentifier.tiff {
                 if let data = NSData(contentsOfFile: path) as Data? {
                     pboard.setData(data, forType: .tiff)
                 }
-            } else if let uti = uti, UTTypeConformsTo(uti as CFString, kUTTypeImage) {
+            } else if let uti = uti, FSItem.utiConformsToImage(uti) {
                 // open the image and return TIFFRepresentation
                 if let image = NSImage(contentsOfFile: url.path ?? ""),
                    let data = image.tiffRepresentation {
@@ -915,21 +1399,21 @@ enum FSItemError: Error {
                 }
             }
         } else if type == NSPasteboard.PasteboardType.rtf.rawValue {
-            if uti == (kUTTypeRTF as String), let data = NSData(contentsOfFile: path) as Data? {
+            if uti == UTIIdentifier.rtf, let data = NSData(contentsOfFile: path) as Data? {
                 pboard.setData(data, forType: .rtf)
             }
         } else if type == NSPasteboard.PasteboardType.rtfd.rawValue {
-            if uti == (kUTTypeFlatRTFD as String) {
+            if uti == UTIIdentifier.flatRTFD {
                 if let tempRTFDData = try? FileWrapper(url: URL(fileURLWithPath: path), options: []) {
                     pboard.setData(tempRTFDData.serializedRepresentation ?? Data(), forType: .rtfd)
                 }
             }
         } else if type == NSPasteboard.PasteboardType.html.rawValue {
-            if uti == (kUTTypeHTML as String), let data = NSData(contentsOfFile: path) as Data? {
+            if uti == UTIIdentifier.html, let data = NSData(contentsOfFile: path) as Data? {
                 pboard.setData(data, forType: .html)
             }
         } else if type == NSPasteboard.PasteboardType.pdf.rawValue {
-            if uti == (kUTTypePDF as String), let data = NSData(contentsOfFile: path) as Data? {
+            if uti == UTIIdentifier.pdf, let data = NSData(contentsOfFile: path) as Data? {
                 pboard.setData(data, forType: .pdf)
             }
         }
