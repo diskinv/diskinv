@@ -99,6 +99,19 @@ public struct KindColors: Sendable {
     /// per kind index: which color it got, 0..<12 = palette, 12 = grey
     let colorSlot: [UInt8]
 
+    /// number of distinct colors kinds can get: the 12 palette colors plus grey
+    public static let colorSlotCount = 13
+
+    /// the color slot of a kind: 0..<12 = `TreemapPalette.kindColors`, 12 = grey
+    public func slot(ofKind kindIndex: Int) -> Int {
+        kindIndex >= 0 && kindIndex < colorSlot.count ? Int(colorSlot[kindIndex]) : 12
+    }
+
+    /// the color of a slot
+    public static func color(ofSlot slot: Int) -> TreemapColor {
+        slot >= 0 && slot < TreemapPalette.kindColors.count ? TreemapPalette.kindColors[slot] : TreemapPalette.grey
+    }
+
     public init(snapshot: Snapshot, sizeMode: SizeMode = .allocated, showPackageContents: Bool = false) {
         let kindCount = snapshot.kinds.count
         var sizes = [UInt64](repeating: 0, count: kindCount)

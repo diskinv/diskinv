@@ -84,7 +84,12 @@ extension TreemapLayout {
         switch c.role {
         case .freeSpace: color = TreemapPalette.freeSpace
         case .otherSpace: color = TreemapPalette.otherSpace
-        default: color = c.colorKind >= 0 ? model.kindColors.color(forKind: Int(c.colorKind)) : TreemapPalette.overflowKind
+        default:
+            if c.colorSlot >= 0 {
+                color = KindColors.color(ofSlot: Int(c.colorSlot))
+            } else {
+                color = c.colorKind >= 0 ? model.kindColors.color(forKind: Int(c.colorKind)) : TreemapPalette.overflowKind
+            }
         }
         if c.cloud { color = CloudStyle.color(color) }
         return color
@@ -112,8 +117,8 @@ extension TreemapLayout {
         let bandPixels = 32 * 1024
         var totalPixels = 0
         for (i, c) in cellData.enumerated() {
-            colors.append(c.role == .container ? TreemapColor(red: 0, green: 0, blue: 0) : color(ofCell: i))
-            guard c.role != .container else { continue }
+            colors.append(c.childCount > 0 ? TreemapColor(red: 0, green: 0, blue: 0) : color(ofCell: i))
+            guard c.childCount == 0 else { continue }
             let w = Int(c.x1 - c.x0), h = Int(c.y1 - c.y0)
             guard w > 0, h > 0 else { continue }
             totalPixels += w * h

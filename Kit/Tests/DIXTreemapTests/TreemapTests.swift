@@ -136,8 +136,8 @@ func checkTiling(_ layout: TreemapLayout) {
     }
     let bad = coverage.filter { $0 != 1 }.count
     #expect(bad == 0, "\(bad) pixels not covered exactly once")
-    // children lie inside their parent and add up to it
-    for i in 0 ..< layout.cellCount where layout.cell(i).role == .container {
+    // children lie inside their parent and add up to it (folders, merged areas, per-color cells)
+    for i in 0 ..< layout.cellCount where !layout.cell(i).children.isEmpty {
         let p = layout.cell(i)
         var sum = 0
         for c in p.children {
@@ -154,8 +154,10 @@ func checkTiling(_ layout: TreemapLayout) {
         let model = TreemapModel(snapshot: snapshot)
         for (w, h, scale) in sizes {
             for minArea in [0.0, 16, 100] {
-                checkTiling(model.layout(pixelWidth: w, pixelHeight: h, scale: scale,
-                                         options: TreemapOptions(minimumCellArea: minArea)))
+                for style in MergedCellStyle.allCases {
+                    checkTiling(model.layout(pixelWidth: w, pixelHeight: h, scale: scale,
+                                             options: TreemapOptions(minimumCellArea: minArea, mergedCellStyle: style)))
+                }
             }
         }
     }
@@ -166,7 +168,9 @@ func checkTiling(_ layout: TreemapLayout) {
     for snapshot in fixtures {
         let model = TreemapModel(snapshot: snapshot)
         for (w, h, scale) in sizes {
-            let merged = model.layout(pixelWidth: w, pixelHeight: h, scale: scale, options: TreemapOptions(minimumCellArea: 16))
+            let style = MergedCellStyle.allCases[(w + h) % MergedCellStyle.allCases.count]
+            let merged = model.layout(pixelWidth: w, pixelHeight: h, scale: scale,
+                                      options: TreemapOptions(minimumCellArea: 16, mergedCellStyle: style))
             let plain = model.layout(pixelWidth: w, pixelHeight: h, scale: scale, options: TreemapOptions(minimumCellArea: 0))
             let minPx = 16 * scale * scale
             for group in merged.mergedGroups {
@@ -223,7 +227,12 @@ func checkTiling(_ layout: TreemapLayout) {
                     switch hit {
                     case .node(let n, _): #expect(n == c.node && c.role == .item)
                         #expect(layout.cellIndex(for: n) == i)
-                    case .merged(let g): #expect(g.cell == i && c.role == .merged && g.folder == c.node)
+                    case .merged(let g, let cell):
+                        #expect(cell == i && g.folder == c.node && c.mergedGroup != nil)
+                        #expect(layout.mergedGroups[c.mergedGroup!] == g)
+                        // the hit part lies inside its merged area
+                        let area = layout.cell(g.cell).rect
+                        #expect(c.rect.x >= area.x && c.rect.maxX <= area.maxX && c.rect.y >= area.y && c.rect.maxY <= area.maxY)
                     default: break
                     }
                 }
@@ -341,8 +350,9 @@ func checkTiling(_ layout: TreemapLayout) {
 
 @Test func retinaLayoutIsInPixelsAndMergesByPoints() {
     let model = TreemapModel(snapshot: fixtures[1])
-    let x1 = model.layout(pixelWidth: 720, pixelHeight: 450, scale: 1)
-    let x2 = model.layout(pixelWidth: 1440, pixelHeight: 900, scale: 2)
+    let solid = TreemapOptions(mergedCellStyle: .solid)
+    let x1 = model.layout(pixelWidth: 720, pixelHeight: 450, scale: 1, options: solid)
+    let x2 = model.layout(pixelWidth: 1440, pixelHeight: 900, scale: 2, options: solid)
     #expect(x2.cell(0).rect == PixelRect(x: 0, y: 0, width: 1440, height: 900))
     // the same items are merged at both scales (thresholds are in points), so cell counts are close
     #expect(abs(x1.drawnCells.count - x2.drawnCells.count) < x1.drawnCells.count / 10 + 5)
@@ -373,4 +383,170 @@ func checkTiling(_ layout: TreemapLayout) {
     for i in stride(from: 0, to: a.pixels.count, by: 4) where a.pixels[i] == 0 && a.pixels[i + 1] == 0 && a.pixels[i + 2] == 0 { black += 1 }
     #expect(black == 0)
     #expect(a.makeCGImage()?.width == 900)
+}
+
+// MARK: - merged area styles (B texture, C kinds, D kinds-texture)
+
+/// bytes per color slot of a node's subtree, the slow obvious way
+func bruteColorMix(_ model: TreemapModel, _ node: Int) -> [UInt64] {
+    var mix = [UInt64](repeating: 0, count: KindColors.colorSlotCount)
+    var stack = [node]
+    while let n = stack.popLast() {
+        if model.isContainer(n) { stack.append(contentsOf: model.snapshot.children(of: n)); continue }
+        mix[model.kindColors.slot(ofKind: Int(model.snapshot.kindIndex[n]))] += model.size(of: n)
+    }
+    return mix
+}
+
+/// a folder of many small files of several kinds (plus small subfolders) next to a big file
+func mixedSmallFiles() -> Snapshot {
+    var small: [FixtureItem] = []
+    for i in 0 ..< 600 { small.append(.file("js\(i)", size: 4096, kind: "JavaScript")) }
+    for i in 0 ..< 300 { small.append(.file("json\(i)", size: 2048, kind: "JSON")) }
+    for i in 0 ..< 40 { small.append(.file("png\(i)", size: 9000, kind: "PNG")) }
+    for i in 0 ..< 30 {
+        small.append(.folder("sub\(i)", (0 ..< 5).map { .file("m\($0)", size: 1000, kind: "Markdown") }))
+    }
+    // more kinds than the palette, so some are grey
+    for k in 0 ..< 14 { small.append(.file("odd\(k)", size: 3000, kind: "Kind\(k)")) }
+    return SnapshotBuilder.build(.folder("root", [.file("huge", size: 2_000_000_000, kind: "Video"), .folder("small", small)]))
+}
+
+@Test func mergedGroupsKnowTheirBytesPerColor() {
+    for snapshot in fixtures + [mixedSmallFiles()] {
+        let model = TreemapModel(snapshot: snapshot)
+        let layout = model.layout(pixelWidth: 800, pixelHeight: 500)
+        for group in layout.mergedGroups {
+            var expected = [UInt64](repeating: 0, count: KindColors.colorSlotCount)
+            for m in layout.mergedMembers(of: group) {
+                for (i, b) in bruteColorMix(model, m).enumerated() { expected[i] += b }
+            }
+            #expect(group.colorBytes == expected)
+            #expect(group.colorBytes.reduce(0, +) == group.size)
+            #expect(group.colorBytes[group.dominantColorSlot] == group.colorBytes.max())
+        }
+    }
+}
+
+@Test func kindCellsHaveTheAreaOfTheirColorsBytes() throws {
+    var checked = 0
+    for snapshot in fixtures + [mixedSmallFiles()] {
+        let model = TreemapModel(snapshot: snapshot)
+        for style in [MergedCellStyle.kinds, .kindsTexture] {
+            let layout = model.layout(pixelWidth: 1000, pixelHeight: 650, options: TreemapOptions(mergedCellStyle: style))
+            for group in layout.mergedGroups {
+                let area = layout.cell(group.cell)
+                let total = Double(group.size)
+                guard total > 0 else { continue }
+                var covered = 0
+                var otherBytes: UInt64 = group.size
+                for part in area.children.map(layout.cell) {
+                    covered += part.rect.area
+                    #expect(part.role == .mergedPart && part.mergedGroup == area.mergedGroup)
+                    if style == .kindsTexture {
+                        // each color cell is filled with tiles of its color only (unless it's the mixed "other")
+                        let tiles = part.children.map(layout.cell)
+                        #expect(!tiles.isEmpty)
+                        if Set(tiles.map(\.colorSlot)).count == 1 { #expect(tiles[0].colorSlot == part.colorSlot) }
+                    }
+                    let bytes = Double(group.colorBytes[part.colorSlot!])
+                    let expected = Double(area.rect.area) * bytes / total
+                    // an exact color cell: its area matches its bytes within a pixel row and column
+                    if abs(Double(part.rect.area) - expected) <= Double(part.rect.width + part.rect.height + 1) {
+                        otherBytes -= group.colorBytes[part.colorSlot!]
+                        checked += 1
+                    }
+                }
+                #expect(covered == area.rect.area)
+                // whatever isn't an exact color cell is the one "other" cell holding the small colors
+                let others = area.children.map(layout.cell).filter { part in
+                    let bytes = Double(group.colorBytes[part.colorSlot!])
+                    return abs(Double(part.rect.area) - Double(area.rect.area) * bytes / total) > Double(part.rect.width + part.rect.height + 1)
+                }
+                #expect(others.count <= 1)
+                if let other = others.first {
+                    let expected = Double(area.rect.area) * Double(otherBytes) / total
+                    #expect(abs(Double(other.rect.area) - expected) <= Double(other.rect.width + other.rect.height + 1))
+                }
+            }
+        }
+    }
+    #expect(checked > 20)
+}
+
+@Test func textureTilesFollowTheBytesPerColor() {
+    let snapshot = mixedSmallFiles()
+    let model = TreemapModel(snapshot: snapshot)
+    for scale in [1.0, 2.0] {
+        let layout = model.layout(pixelWidth: Int(900 * scale), pixelHeight: Int(600 * scale), scale: scale,
+                                  options: TreemapOptions(mergedCellStyle: .texture))
+        #expect(!layout.mergedGroups.isEmpty)
+        for group in layout.mergedGroups {
+            let tiles = layout.cell(group.cell).children.map(layout.cell)
+            #expect(!tiles.isEmpty)
+            let total = Double(group.size)
+            for slot in 0 ..< KindColors.colorSlotCount {
+                let n = tiles.filter { $0.colorSlot == slot }.count
+                let exact = Double(tiles.count) * Double(group.colorBytes[slot]) / total
+                #expect(Double(n) >= exact.rounded(.down) && Double(n) <= exact.rounded(.up), "slot \(slot): \(n) tiles, exact \(exact)")
+            }
+            // tiles are about `texturePitch` points: never bigger than 1.5x the pitch, so finer than a real cell
+            let pitchPx = 3 * scale
+            #expect(tiles.allSatisfy { Double($0.rect.width) < pitchPx * 1.5 + 1 || tiles.count == 1 || Double(layout.cell(group.cell).rect.width) < pitchPx * 1.5 })
+        }
+    }
+}
+
+@Test func hoverDescribesWhatAMergedAreaHolds() throws {
+    let snapshot = mixedSmallFiles()
+    let model = TreemapModel(snapshot: snapshot)
+    for style in MergedCellStyle.allCases {
+        let layout = model.layout(pixelWidth: 900, pixelHeight: 600, options: TreemapOptions(mergedCellStyle: style))
+        let group = try #require(layout.mergedGroups.max { $0.count < $1.count })
+        let whole = layout.breakdown(of: group)
+        // brute force: every file under the merged members
+        var files = 0
+        var perKind: [String: (Int, UInt64)] = [:]
+        var stack = layout.mergedMembers(of: group)
+        while let n = stack.popLast() {
+            if model.isContainer(n) { stack.append(contentsOf: snapshot.children(of: n)); continue }
+            files += 1
+            perKind[snapshot.kind(of: n).name, default: (0, 0)].0 += 1
+            perKind[snapshot.kind(of: n).name, default: (0, 0)].1 += model.size(of: n)
+        }
+        #expect(whole.fileCount == files)
+        #expect(whole.size == group.size)
+        #expect(whole.kinds.reduce(0) { $0 + $1.size } == group.size)
+        for k in whole.kinds { #expect(perKind[k.name]! == (k.count, k.size)) }
+        #expect(whole.kinds.first?.name == "JavaScript")
+        #expect(whole.summary().contains("JavaScript"))
+        #expect(whole.summary().contains("\(files.formatted()) small files"))
+
+        // every drawn part of the area hit-tests to the group; a per-color part narrows the breakdown to its color
+        for i in layout.drawnCells where layout.cell(i).mergedGroup.map({ layout.mergedGroups[$0] }) == group {
+            let c = layout.cell(i)
+            guard case .merged(let g, let cell)? = layout.hitTest(pixelX: c.rect.x, y: c.rect.y) else {
+                Issue.record("not a merged hit"); continue
+            }
+            #expect(g == group && cell == i)
+            let b = try #require(layout.breakdown(atPixelX: c.rect.x, y: c.rect.y))
+            #expect(b.size <= group.size && b.fileCount > 0)
+        }
+    }
+}
+
+@Test func zoomingIntoAMergedFolderShowsItsFiles() throws {
+    let snapshot = mixedSmallFiles()
+    let model = TreemapModel(snapshot: snapshot)
+    let small = try #require(snapshot.children(of: 0).first { snapshot.name(of: $0) == "small" })
+    // at the top level the small files are merged...
+    let top = model.layout(pixelWidth: 900, pixelHeight: 600)
+    let file = try #require(snapshot.children(of: small).first { snapshot.name(of: $0) == "js0" })
+    let topCell = try #require(top.cellIndex(for: file))
+    #expect(top.cell(topCell).role == .merged)
+    // ...zoomed into their folder (same window), every file has its own cell
+    let zoomed = model.layout(root: small, pixelWidth: 900, pixelHeight: 600)
+    #expect(zoomed.mergedGroups.isEmpty)
+    let zoomedCell = try #require(zoomed.cellIndex(for: file))
+    #expect(zoomed.cell(zoomedCell).role == .item && zoomed.cell(zoomedCell).node == file)
 }

@@ -5,7 +5,8 @@
 //
 //  dix-render <snap.dixsnap | synthetic[:seed[:scale]]> -o out.png
 //      [--size 1440x900] [--scale 2] [--root <path>] [--select <path>]
-//      [--mode allocated|logical] [--min-cell-area 16] [--merged cushion|folderSurface]
+//      [--mode allocated|logical] [--min-cell-area 16]
+//      [--merged solid|texture|kinds|kinds-texture] [--pitch 3] [--relief 1]
 //      [--packages] [--free-space] [--other-space]
 //      [--compare]            also run dix-render-reference on the same input; write
 //                             out-compare.png (reference | new), out-diff.png, and
@@ -13,10 +14,16 @@
 //      [--crop x,y,w,h] [--magnify 4]   also write out-crop.png (nearest neighbor)
 //      [--repeat N]           time layout + render N times, report the best
 //      [--ls]                 list the root's children with sizes and exit
+//      [--hover x,y]          print what is under pixel x,y (with a merged area's breakdown)
+//      [--montage out.png --styles solid,texture,kinds,kinds-texture [--columns 2]
+//       [--with-reference]]   one labeled image of several merged styles side by side
+//                             (cropped and magnified when --crop is given), with timings
 //
 //  GPL v3
 //
 
+import CoreGraphics
+import CoreText
 import DIXCore
 import DIXTreemap
 import Foundation
@@ -47,7 +54,21 @@ let selectArg = option("--select")
 let modeArg = option("--mode") ?? "allocated"
 let mode: SizeMode = modeArg == "logical" ? .logical : .allocated
 let minArea = Double(option("--min-cell-area") ?? "16") ?? 16
-let mergedStyle = MergedCellStyle(rawValue: option("--merged") ?? "cushion") ?? .cushion
+@MainActor func parseStyle(_ name: String) -> MergedCellStyle {
+    if name == "cushion" { return .solid }
+    guard let style = MergedCellStyle(rawValue: name) else {
+        fail("unknown merged style \(name); use one of \(MergedCellStyle.allCases.map(\.rawValue).joined(separator: ", "))")
+    }
+    return style
+}
+let mergedStyle = parseStyle(option("--merged") ?? TreemapOptions().mergedCellStyle.rawValue)
+let pitch = Double(option("--pitch") ?? "3") ?? 3
+let relief = Float(option("--relief") ?? "1") ?? 1
+let hoverArg = option("--hover")
+let montagePath = option("--montage")
+let montageStyles = (option("--styles") ?? "solid,texture,kinds,kinds-texture").split(separator: ",").map { parseStyle(String($0)) }
+let montageColumns = max(1, Int(option("--columns") ?? "2") ?? 2)
+let withReference = flag("--with-reference")
 let cropArg = option("--crop")
 let magnify = Int(option("--magnify") ?? "4") ?? 4
 let repeatCount = max(1, Int(option("--repeat") ?? "1") ?? 1)
@@ -103,11 +124,13 @@ let model = TreemapModel(snapshot: snapshot, sizeMode: mode, showPackageContents
 let modelMs = now() - tModel
 let options = TreemapOptions(minimumCellArea: minArea, showFreeSpace: showFreeSpace,
                              showOtherSpace: showOtherSpace, mergedCellStyle: mergedStyle,
-                             originalRounding: originalRounding)
+                             originalRounding: originalRounding, texturePitch: pitch, textureRelief: relief)
 
 var layoutMs = Double.infinity, renderMs = Double.infinity, totalMs = Double.infinity
+let tCold = now()
 var layout = model.layout(root: root, pixelWidth: pixelWidth, pixelHeight: pixelHeight, scale: scale, options: options)
 var bitmap = layout.render()
+let coldMs = now() - tCold
 for _ in 0 ..< repeatCount {
     let a = now()
     layout = model.layout(root: root, pixelWidth: pixelWidth, pixelHeight: pixelHeight, scale: scale, options: options)
@@ -122,6 +145,7 @@ if let selectArg {
     let node = findNode(selectArg)
     if let cell = layout.cellIndex(for: node) {
         layout.drawSelectionFrame(cell: cell, into: &bitmap)
+        print("selected \(selectArg): cell \(layout.cell(cell).rect)")
     } else {
         print("note: \(selectArg) has no cell in this layout")
     }
@@ -130,7 +154,7 @@ do { try bitmap.writePNG(to: URL(fileURLWithPath: outPath)) } catch { fail("cann
 
 let drawn = layout.drawnCells.count
 print("\(snapshot.nodeCount) nodes, \(pixelWidth)x\(pixelHeight) px (scale \(scaleArg)), \(mode.rawValue), \(layout.cellCount) cells (\(drawn) drawn, \(layout.mergedGroups.count) merged)")
-print("load \(fmt(loadMs)), model \(fmt(modelMs)), layout \(fmt(layoutMs)), render \(fmt(renderMs)), layout+render \(fmt(totalMs))" + (repeatCount > 1 ? " (best of \(repeatCount))" : ""))
+print("load \(fmt(loadMs)), model \(fmt(modelMs)), first layout+render \(fmt(coldMs)), layout \(fmt(layoutMs)), render \(fmt(renderMs)), layout+render \(fmt(totalMs))" + (repeatCount > 1 ? " (best of \(repeatCount))" : ""))
 
 let base = outPath.hasSuffix(".png") ? String(outPath.dropLast(4)) : outPath
 
@@ -150,6 +174,113 @@ func crop(_ b: TreemapBitmap, _ x: Int, _ y: Int, _ w: Int, _ h: Int, magnify m:
 let cropRect: [Int]? = cropArg.map { $0.split(separator: ",").compactMap { Int($0) } }
 if let c = cropRect, c.count == 4 {
     try? crop(bitmap, c[0], c[1], c[2], c[3], magnify: magnify).writePNG(to: URL(fileURLWithPath: base + "-crop.png"))
+}
+
+if let hoverArg {
+    let v = hoverArg.split(separator: ",").compactMap { Int($0) }
+    if v.count == 2, let hit = layout.hitTest(pixelX: v[0], y: v[1]) {
+        switch hit {
+        case .node(let n, _): print("hover: \(snapshot.path(of: n)) (\(snapshot.kind(of: n).name), \(model.size(of: n)) bytes)")
+        case .merged(let g, _):
+            let b = layout.breakdown(atPixelX: v[0], y: v[1]) ?? layout.breakdown(of: g)
+            print("hover: in \(snapshot.path(of: g.folder)): \(b.summary())")
+        case .freeSpace: print("hover: free space")
+        case .otherSpace: print("hover: other space")
+        }
+    }
+}
+
+// MARK: - montage of merged styles
+
+/// runs dix-render-reference with this run's arguments and reads its PNG back
+@MainActor func renderReference(to png: String, cells: String? = nil) -> TreemapBitmap {
+    let me = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+    let tool = me.deletingLastPathComponent().appendingPathComponent("dix-render-reference")
+    var refArgs = [snapArg, "-o", png, "--size", sizeArg, "--scale", scaleArg, "--mode", modeArg]
+    if let cells { refArgs += ["--cells", cells] }
+    if let rootArg { refArgs += ["--root", rootArg] }
+    if showPackageContents { refArgs.append("--packages") }
+    if showFreeSpace { refArgs.append("--free-space") }
+    if showOtherSpace { refArgs.append("--other-space") }
+    let proc = Process()
+    proc.executableURL = tool
+    proc.arguments = refArgs
+    proc.standardOutput = FileHandle.nullDevice
+    do { try proc.run() } catch { fail("cannot run \(tool.path): \(error)") }
+    proc.waitUntilExit()
+    guard proc.terminationStatus == 0, let ref = try? TreemapBitmap(contentsOfPNG: URL(fileURLWithPath: png)) else {
+        fail("reference renderer failed")
+    }
+    return ref
+}
+
+/// lays out labeled panels in a grid on white, labels in a band above each panel.
+/// Panel pixels are copied as they are (no color management); only the labels
+/// are drawn with CoreText.
+func montage(_ panels: [(String, TreemapBitmap)], columns: Int) -> TreemapBitmap? {
+    guard let first = panels.first?.1 else { return nil }
+    let pw = first.width, ph = first.height
+    let gap = 12, band = 34
+    let cols = min(columns, panels.count), rows = (panels.count + cols - 1) / cols
+    let w = cols * pw + (cols + 1) * gap, h = rows * (ph + band) + (rows + 1) * gap
+    var canvas = TreemapBitmap(width: w, height: h)
+    canvas.fill(PixelRect(x: 0, y: 0, width: w, height: h), r: 255, g: 255, b: 255)
+    var labels: [(String, Int, Int)] = []
+    for (i, (label, bitmap)) in panels.enumerated() {
+        let x = gap + (i % cols) * (pw + gap)
+        let top = gap + (i / cols) * (ph + band + gap)
+        for y in 0 ..< min(ph, bitmap.height) {
+            let src = y * bitmap.width * 4, dst = ((top + band + y) * w + x) * 4
+            let n = min(pw, bitmap.width) * 4
+            canvas.pixels.replaceSubrange(dst ..< dst + n, with: bitmap.pixels[src ..< src + n])
+        }
+        labels.append((label, x, top))
+    }
+    let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 22, nil)
+    canvas.pixels.withUnsafeMutableBytes { buf in
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return }
+        let attrs = [kCTFontAttributeName: font,
+                     kCTForegroundColorAttributeName: CGColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1)] as CFDictionary
+        for (label, x, top) in labels {
+            guard let text = CFAttributedStringCreate(nil, label as CFString, attrs) else { continue }
+            ctx.textPosition = CGPoint(x: x + 2, y: h - top - band + 9)
+            CTLineDraw(CTLineCreateWithAttributedString(text), ctx)
+        }
+    }
+    return canvas
+}
+
+if let montagePath {
+    var panels: [(String, TreemapBitmap)] = []
+    let c = cropRect.flatMap { $0.count == 4 ? $0 : nil }
+    func framed(_ b: TreemapBitmap) -> TreemapBitmap { c.map { crop(b, $0[0], $0[1], $0[2], $0[3], magnify: magnify) } ?? b }
+    if withReference {
+        panels.append(("original (reference)", framed(renderReference(to: base + "-montage-ref.png"))))
+    }
+    let letters = ["solid": "A", "texture": "B", "kinds": "C", "kinds-texture": "D"]
+    for style in montageStyles {
+        var o = options
+        o.mergedCellStyle = style
+        let styleModel = TreemapModel(snapshot: snapshot, sizeMode: mode, showPackageContents: showPackageContents)
+        let a = now()
+        let cold = styleModel.layout(root: root, pixelWidth: pixelWidth, pixelHeight: pixelHeight, scale: scale, options: o)
+        let coldBitmap = cold.render()
+        let b = now()
+        var best = Double.infinity
+        for _ in 0 ..< repeatCount {
+            let t = now()
+            _ = styleModel.layout(root: root, pixelWidth: pixelWidth, pixelHeight: pixelHeight, scale: scale, options: o).render()
+            best = min(best, now() - t)
+        }
+        print(String(format: "  %@ %-14@ first layout+render %6.1f ms, warm %6.1f ms, %d drawn cells",
+                     letters[style.rawValue] ?? "?", style.rawValue, b - a, best, cold.drawnCells.count))
+        panels.append(("\(letters[style.rawValue] ?? "") \(style.rawValue)", framed(coldBitmap)))
+    }
+    guard let out = montage(panels, columns: montageColumns) else { fail("cannot compose montage") }
+    do { try out.writePNG(to: URL(fileURLWithPath: montagePath)) } catch { fail("cannot write \(montagePath)") }
+    print("wrote \(montagePath)")
 }
 
 // MARK: - compare against the original renderer

@@ -11,6 +11,7 @@
 //
 
 import DIXCore
+import Foundation
 
 public final class TreemapModel: Sendable {
     public let snapshot: Snapshot
@@ -31,6 +32,9 @@ public final class TreemapModel: Sendable {
     /// logical mode only: bytes of cloud placeholders in each subtree
     let cloudBytes: [UInt64]
     let sizes: [UInt64]
+    /// per folder: bytes per color slot of its subtree (see `colorMix(of:)`),
+    /// computed only for folders that get merged, then cached
+    let mixCache = ColorMixCache()
 
     public init(snapshot: Snapshot, sizeMode: SizeMode = .allocated, showPackageContents: Bool = false) {
         self.snapshot = snapshot
@@ -123,6 +127,45 @@ public final class TreemapModel: Sendable {
         return lo ..< min(lo + count, s.nodeCount)
     }
 
+    /// Bytes per color in a node's subtree, as `colorSlotCount` values: slot
+    /// 0..<12 = the palette colors, 12 = grey. A file or a package drawn as one
+    /// cell counts entirely in its own kind's color. Folders are walked once and
+    /// cached; this runs only for folders that end up merged.
+    public func colorMix(of node: NodeIndex) -> [UInt64] {
+        var mix = [UInt64](repeating: 0, count: KindColors.colorSlotCount)
+        addColorMix(of: node, into: &mix)
+        return mix
+    }
+
+    func addColorMix(of node: NodeIndex, into mix: inout [UInt64]) {
+        let s = snapshot
+        guard isContainer(node) else {
+            mix[kindColors.slot(ofKind: Int(s.kindIndex[node]))] &+= sizes[node]
+            return
+        }
+        if let cached = mixCache.get(node) {
+            for i in 0 ..< mix.count { mix[i] &+= cached[i] }
+            return
+        }
+        var own = [UInt64](repeating: 0, count: KindColors.colorSlotCount)
+        var stack: [Int] = [node]
+        while let n = stack.popLast() {
+            if n != node, let cached = mixCache.get(n) {
+                for i in 0 ..< own.count { own[i] &+= cached[i] }
+                continue
+            }
+            for c in TreemapModel.childRange(s, n) {
+                if isContainer(c) {
+                    stack.append(c)
+                } else {
+                    own[kindColors.slot(ofKind: Int(s.kindIndex[c]))] &+= sizes[c]
+                }
+            }
+        }
+        mixCache.set(node, own)
+        for i in 0 ..< mix.count { mix[i] &+= own[i] }
+    }
+
     @inline(__always) func child(_ position: Int) -> Int {
         childOrder.isEmpty ? position : Int(childOrder[position])
     }
@@ -134,5 +177,21 @@ public final class TreemapModel: Sendable {
                        scale: Double = 1, options: TreemapOptions = TreemapOptions()) -> TreemapLayout {
         TreemapLayout(model: self, root: root, pixelWidth: pixelWidth, pixelHeight: pixelHeight,
                       scale: scale, options: options)
+    }
+}
+
+/// A small thread-safe cache of folder color mixes (layouts may run on any thread).
+final class ColorMixCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var mixes: [Int32: [UInt64]] = [:]
+
+    func get(_ node: Int) -> [UInt64]? {
+        lock.lock(); defer { lock.unlock() }
+        return mixes[Int32(truncatingIfNeeded: node)]
+    }
+
+    func set(_ node: Int, _ mix: [UInt64]) {
+        lock.lock(); defer { lock.unlock() }
+        mixes[Int32(truncatingIfNeeded: node)] = mix
     }
 }
