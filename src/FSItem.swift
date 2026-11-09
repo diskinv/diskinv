@@ -1243,18 +1243,24 @@ final class ScanProgress {
         let selfURL = fileURL()!
         progress.noteEnteredFolder(path: selfURL.cachedPath())
 
-        let entries = try FSItem.directoryEntries(of: selfURL)
+        //Drain autoreleased temporaries (directory listings, resource-value
+        //dictionaries, UTType lookups) per directory, as the serial walk does
+        //per entry. A worker owns a whole top-level subtree, so without this
+        //nothing is released until the entire subtree is done.
+        let entries = try autoreleasepool { try FSItem.directoryEntries(of: selfURL) }
 
         //recurse into subdirectories after creating all children. We descend
         //children in listing order; final ordering is fixed up by the
         //main-thread recalculateSize(...) sort after join, so listing order
         //does not affect the final tree.
         for entryURL in entries {
-            entryURL.cacheResources(in: FSItem.scanResourceKeys)
-            let child = FSItem(url: entryURL, parent: self,
-                               setKindString: params.setKindStrings,
-                               usePhysicalSize: params.usePhysicalSize,
-                               counts: &counts)
+            let child: FSItem = autoreleasepool {
+                entryURL.cacheResources(in: FSItem.scanResourceKeys)
+                return FSItem(url: entryURL, parent: self,
+                              setKindString: params.setKindStrings,
+                              usePhysicalSize: params.usePhysicalSize,
+                              counts: &counts)
+            }
             if entryURL.isDirectory() && !entryURL.isVolume() {
                 //serial descent within this worker (no dispatch below root)
                 try child.scanSubtreeSerially(params: params,
