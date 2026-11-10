@@ -1,0 +1,3 @@
+import DIXApp
+
+DIXApplication.main()
