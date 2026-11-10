@@ -10,6 +10,14 @@
 //  A node's children are CONTIGUOUS: indexes firstChild ..< firstChild +
 //  childCount, sorted by allocatedSize descending (ties: name ascending,
 //  byte-wise). Every directory's sizes are the sums over its subtree.
+//  Children come after their parent. A scan lays nodes out breadth-first;
+//  an edited snapshot (SnapshotEditing.swift: removing, replacingSubtree)
+//  keeps every rule above but not necessarily breadth-first order, so code
+//  must walk children(of:), never assume a level-by-level order.
+//
+//  Hard links: `hardLinks` lists every hard-linked file with its (device,
+//  inode), so an edit can hand the size to another link when the one that
+//  carries it is removed.
 //
 //  GPL v3
 //
@@ -77,6 +85,24 @@ public struct VolumeInfo: Sendable, Hashable, Codable {
     }
 }
 
+/// One link of a hard-linked file: a non-directory whose link count was
+/// greater than 1 when it was scanned. Every such node is listed, the one that
+/// keeps the size and its `.hardLinkDuplicate`s alike, so that when the keeper
+/// is removed from the snapshot another link can take over its size.
+public struct HardLink: Sendable, Hashable {
+    public var node: UInt32
+    /// st_dev of the file's volume
+    public var device: UInt32
+    /// inode number
+    public var fileID: UInt64
+
+    public init(node: UInt32, device: UInt32, fileID: UInt64) {
+        self.node = node
+        self.device = device
+        self.fileID = fileID
+    }
+}
+
 public struct Snapshot: Sendable {
     // MARK: scan metadata
 
@@ -108,12 +134,21 @@ public struct Snapshot: Sendable {
     public var nameBytes: [UInt8]
     public var kinds: [FileKind]
 
+    /// The hard-linked files, sorted by node. Each (device, fileID) group has
+    /// exactly one member without `.hardLinkDuplicate` (the keeper, which
+    /// carries the allocated size), and the duplicates have allocatedSize 0.
+    /// Used by `removing(_:)` and `replacingSubtree(at:with:)` to move the
+    /// size to another link when the keeper goes. Empty for snapshots that
+    /// have no hard links, and for .dixsnap files written before it existed
+    /// (their duplicates then simply stay at 0 if the keeper is removed).
+    public var hardLinks: [HardLink]
+
     public init(rootPath: String, scanDate: Date, volume: VolumeInfo?,
                 parent: [UInt32], firstChild: [UInt32], childCount: [UInt32],
                 allocatedSize: [UInt64], logicalSize: [UInt64],
                 nameOffset: [UInt32], nameLength: [UInt16],
                 kindIndex: [UInt16], flags: [NodeFlags],
-                nameBytes: [UInt8], kinds: [FileKind]) {
+                nameBytes: [UInt8], kinds: [FileKind], hardLinks: [HardLink] = []) {
         self.rootPath = rootPath
         self.scanDate = scanDate
         self.volume = volume
@@ -128,6 +163,7 @@ public struct Snapshot: Sendable {
         self.flags = flags
         self.nameBytes = nameBytes
         self.kinds = kinds
+        self.hardLinks = hardLinks
     }
 
     // MARK: accessors
@@ -210,6 +246,28 @@ public struct Snapshot: Sendable {
             if Int(kindIndex[node]) >= kinds.count { return "node \(node): kind out of bounds" }
         }
         for node in 1 ..< n where !seenAsChild[node] { return "node \(node): unreachable" }
+        return validateHardLinks()
+    }
+
+    private func validateHardLinks() -> String? {
+        guard !hardLinks.isEmpty else { return nil }
+        struct Key: Hashable { var device: UInt32; var fileID: UInt64 }
+        var keepers: [Key: Int] = [:]
+        var previous = -1
+        for link in hardLinks {
+            let node = Int(link.node)
+            guard node > previous, node < nodeCount else { return "hard links: not sorted by node, or out of bounds" }
+            previous = node
+            if flags[node].contains(.directory) { return "hard links: node \(node) is a directory" }
+            let key = Key(device: link.device, fileID: link.fileID)
+            if flags[node].contains(.hardLinkDuplicate) {
+                if allocatedSize[node] != 0 { return "hard links: duplicate \(node) has an allocated size" }
+                keepers[key, default: 0] += 0
+            } else {
+                keepers[key, default: 0] += 1
+            }
+        }
+        for count in keepers.values where count != 1 { return "hard links: a file has \(count) keepers" }
         return nil
     }
 }

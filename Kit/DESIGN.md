@@ -33,6 +33,8 @@ The app shell (phase 2) will sit on top and stay thin.
 |---|---|---|
 | `Sources/DIXCore/Snapshot.swift` | the data model: **the contract, change only with care** | shared |
 | `Sources/DIXCore/SnapshotFile.swift` | `.dixsnap` read/write | scanner agent |
+| `Sources/DIXCore/SnapshotCompression.swift` | compressed `.dixsnap` (LZFSE chunks) | scanner agent |
+| `Sources/DIXCore/SnapshotEditing.swift` | `removing` / `replacingSubtree` without a rescan | scanner agent |
 | `Sources/DIXScan/` | the scanner | scanner agent |
 | `Sources/dix-scan/` | scan CLI | scanner agent |
 | `Sources/DIXTreemap/` | layout, colors, cushion rendering, hit testing | treemap agent |
@@ -51,16 +53,47 @@ childCount`. They are sorted by `allocatedSize` descending, ties by name
 (byte-wise ascending). Directory sizes are subtree sums. Flags mark
 directories, packages, symlinks, **cloud placeholders**, **hard-link
 duplicates**, mount points and unreadable folders. Kinds are a small table,
-indexed per node. `validate()` checks every invariant. Read
+indexed per node. `hardLinks` lists every hard-linked file with its (device,
+inode). `validate()` checks every invariant. Read
 `Sources/DIXCore/Snapshot.swift`: the doc comments are the spec.
+
+### Edits (scanner agent)
+
+```swift
+extension Snapshot {
+    func removing(_ nodes: [NodeIndex]) -> (snapshot: Snapshot, indexMap: [UInt32])
+    func replacingSubtree(at node: NodeIndex, with subtree: Snapshot) -> (snapshot: Snapshot, indexMap: [UInt32])
+}
+```
+
+- After Move to Trash, or after rescanning one folder, the app edits the
+  snapshot instead of rescanning everything. The result passes `validate()`
+  and is the tree a fresh scan would give: same entries, sizes, flags, kinds,
+  child order and hard-link keepers. Tests check this against fresh scans.
+- `indexMap[old]` is the node's new index, or `UInt32.max` if it is gone.
+- Edited snapshots are not necessarily breadth-first. Only the documented
+  rules hold: children contiguous, after their parent, and sorted.
+- Hard links: when the link that carries an inode's size is removed, the
+  remaining link with the smallest path takes the size over, as a scan
+  would choose. One case is not handled. A new link created inside a
+  rescanned folder to an outside file that had a single link at scan time
+  counts twice until a full rescan, because that file's inode was never
+  recorded.
+- Kind indexes stay stable across edits. The kind table only grows.
+- 2.87M nodes: 6 to 12 ms per edit (`dix-scan --bench-edit`).
 
 ### `.dixsnap` file (scanner agent)
 
-API: `public extension Snapshot { init(contentsOf url: URL) throws; func write(to url: URL) throws }`.
+API: `public extension Snapshot { init(contentsOf url: URL) throws; func write(to url: URL, compression: SnapshotFileCompression = .lzfse) throws }`.
 
 - Binary, little-endian. Magic `DIXSNAP1`, a format version, a small header
   (root path, scan date, volume info, counts), then the arrays as sections.
   Designed so loading 1M nodes takes well under 200 ms.
+- Written compressed by default (`DIXSNAPZ`): the plain file in 4 MiB
+  chunks, each compressed with LZFSE on its own, so both directions use all
+  cores. Files are 5 to 8x smaller and load just as fast. The reader takes
+  both formats. It caps the plain size at what the header claims, at
+  4096x each chunk's stored length, and at 16 GiB.
 - **The loader must never crash on a malformed or hostile file.** Check every
   length and offset, cap counts by the file size, then run `validate()`.
   Throw on anything wrong. Fuzz-test it with random truncation and corruption.
@@ -81,7 +114,11 @@ API: `public extension Snapshot { init(contentsOf url: URL) throws; func write(t
   extension"), with `UTType(filenameExtension:)` → `localizedDescription`.
   Packages too: a directory is a package if its bundle bit is set or its
   extension's UTType conforms to `.package`. Cache per extension, never per
-  file.
+  file. A small override table (`KindRegistry.overrides`) fixes extensions
+  that macOS gets wrong on a developer's disk, for lowercase spellings only.
+  `.ts`, `.mts`, `.cts` and `.tsx` become TypeScript, `.cjs` and `.jsx`
+  JavaScript, `.bin` an unknown "BIN File" (not MacBinary), and `.pkl` a
+  Python pickle. An all-capitals `CLIP.MTS` keeps its system type.
 - **Cloud files** (iCloud Drive, Dropbox, OneDrive, Google Drive, any File
   Provider):
   - A *dataless* file has `SF_DATALESS` in its flags. It occupies about 0

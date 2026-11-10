@@ -154,7 +154,12 @@ private func parse(_ entries: [FakeEntry], claim: Int? = nil)
     func key(_ s: String, dir: Bool = false) -> KindKey? {
         Array(s.utf8).withUnsafeBytes { KindKey.forExtension(of: $0, directory: dir) }
     }
-    #expect(key("a.TXT") == key("b.txt"))
+    // case-insensitive, except that all-capitals spellings are a key of their
+    // own (they skip the override table; see KindTests)
+    #expect(key("a.Txt") == key("b.txt"))
+    #expect(key("a.TXT") != key("b.txt"))
+    #expect(key("a.TXT")?.extensionString == "txt")
+    #expect(key("a.MP4") == key("b.MP4"))
     #expect(key("a.txt")?.extensionString == "txt")
     #expect(key(".bashrc") == nil)
     #expect(key("noext") == nil)

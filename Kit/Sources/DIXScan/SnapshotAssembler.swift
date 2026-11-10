@@ -11,7 +11,8 @@
 //     larger job id than its parent, so one pass in descending id order works)
 //  3. order: each directory's entries sorted by allocated size descending,
 //     then name bytes ascending
-//  4. layout: breadth-first, children contiguous
+//  4. layout: breadth-first, children contiguous, plus the table of
+//     hard-linked nodes (Snapshot.hardLinks)
 //
 //  GPL v3
 //
@@ -190,7 +191,7 @@ struct SnapshotAssembler {
         var nameLength = [UInt16](repeating: 0, count: total)
         var kindIndex = [UInt16](repeating: 0, count: total)
         var flags = [NodeFlags](repeating: [], count: total)
-        var nodeJob = [Int32](repeating: -1, count: total)
+        var hardLinks: [HardLink] = []
         var nameBytes: [UInt8] = []
         nameBytes.reserveCapacity(nameTotal)
 
@@ -201,16 +202,24 @@ struct SnapshotAssembler {
         logicalSize[0] = results[0].logicalTotal
         flags[0] = rootFlags
         kindIndex[0] = kindRemap[Int(rootKindSlot)]
-        nodeJob[0] = 0
 
+        // Until a node is laid out, firstChild holds the job of its directory
+        // listing (0 = none: job 0 is the root's, which no entry refers to).
+        // That saves a separate 4-byte-per-node array at the scan's peak.
         var next = 1
         for node in 0 ..< total {
-            let job = nodeJob[node]
-            guard job >= 0 else { continue }
-            let result = results[Int(job)]
+            let job = node == 0 ? 0 : Int(firstChild[node])
+            guard node == 0 || job > 0 else { continue }
+            let result = results[job]
             firstChild[node] = UInt32(next)
             childCount[node] = UInt32(result.entries.count)
+            // hard-linked entries, found again by name offset (sorting moved them)
+            var linked: [UInt32: LinkRecord] = [:]
+            for link in result.links { linked[link.nameOffset] = link }
             for entry in result.entries {
+                if !linked.isEmpty, let link = linked[entry.nameOffset] {
+                    hardLinks.append(HardLink(node: UInt32(next), device: link.device, fileID: link.fileID))
+                }
                 parent[next] = UInt32(node)
                 allocatedSize[next] = entry.allocated
                 logicalSize[next] = entry.logical
@@ -219,12 +228,13 @@ struct SnapshotAssembler {
                 nameBytes.append(contentsOf: result.names[Int(entry.nameOffset) ..< Int(entry.nameOffset) + Int(entry.nameLength)])
                 kindIndex[next] = kindRemap[Int(entry.kindSlot)]
                 flags[next] = NodeFlags(rawValue: entry.flags)
-                nodeJob[next] = entry.child
+                firstChild[next] = entry.child > 0 ? UInt32(entry.child) : 0
                 next += 1
             }
             // consumed: free it now rather than at the end, to lower the peak
             result.entries = []
             result.names = []
+            result.links = []
         }
         precondition(next == total)
 
@@ -232,6 +242,7 @@ struct SnapshotAssembler {
                         parent: parent, firstChild: firstChild, childCount: childCount,
                         allocatedSize: allocatedSize, logicalSize: logicalSize,
                         nameOffset: nameOffset, nameLength: nameLength,
-                        kindIndex: kindIndex, flags: flags, nameBytes: nameBytes, kinds: kinds)
+                        kindIndex: kindIndex, flags: flags, nameBytes: nameBytes, kinds: kinds,
+                        hardLinks: hardLinks)
     }
 }

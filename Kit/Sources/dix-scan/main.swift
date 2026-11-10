@@ -2,10 +2,16 @@
 //  dix-scan: scan a folder into a .dixsnap file, inspect one, or check a
 //  scan against an independent walk.
 //
-//    dix-scan <folder> [-o out.dixsnap] [--workers N] [--reproducible]
+//    dix-scan <folder> [-o out.dixsnap] [--uncompressed] [--workers N] [--reproducible]
 //             [--verify] [--issues] [--progress] [--quiet]
 //    dix-scan --info <file.dixsnap>
 //    dix-scan --dump <file.dixsnap> [--depth N]
+//    dix-scan --export tsv <file.dixsnap> -o out.tsv
+//    dix-scan --convert <file.dixsnap> -o out.dixsnap [--uncompressed]
+//    dix-scan --bench-edit <file.dixsnap>
+//
+//  .dixsnap files are written LZFSE-compressed unless --uncompressed; both
+//  kinds are read everywhere.
 //
 //  --reproducible  write scan date 0 and no volume info (free space changes
 //                  between runs), so two scans of an unchanged tree give
@@ -73,14 +79,54 @@ func runCLI() {
 
     if takeFlag("-h") || takeFlag("--help") || arguments.isEmpty {
         print("""
-        usage: dix-scan <folder> [-o out.dixsnap] [--workers N] [--reproducible] [--verify] [--issues] [--progress] [--quiet]
+        usage: dix-scan <folder> [-o out.dixsnap] [--uncompressed] [--workers N] [--reproducible] [--verify] [--issues] [--progress] [--quiet]
                dix-scan --info <file.dixsnap>
                dix-scan --dump <file.dixsnap> [--depth N]
+               dix-scan --export tsv <file.dixsnap> -o out.tsv
+               dix-scan --convert <file.dixsnap> -o out.dixsnap [--uncompressed]
+               dix-scan --bench-edit <file.dixsnap>
         """)
         exit(arguments.isEmpty ? 1 : 0)
     }
 
-    // MARK: --info / --dump
+    // MARK: --info / --dump / --bench-edit
+
+    let compression: SnapshotFileCompression = takeFlag("--uncompressed") ? .none : .lzfse
+
+    if let file = takeValue("--convert") {
+        guard let output = takeValue("-o", "--output") else { fail("--convert needs -o out.dixsnap") }
+        let t0 = Date()
+        let snapshot: Snapshot
+        do { snapshot = try Snapshot(contentsOf: URL(fileURLWithPath: file)) } catch { fail("\(file): \(error)") }
+        let t1 = Date()
+        do { try snapshot.write(to: URL(fileURLWithPath: output), compression: compression) } catch { fail("cannot write \(output): \(error)") }
+        let size = (try? FileManager.default.attributesOfItem(atPath: output)[.size] as? Int) ?? 0
+        print(String(format: "%@ -> %@ (%@, %d bytes): read %.1f ms, wrote %.1f ms", file, output,
+                     compression == .none ? "uncompressed" : "lzfse", size,
+                     t1.timeIntervalSince(t0) * 1000, Date().timeIntervalSince(t1) * 1000))
+        exit(0)
+    }
+
+    if let format = takeValue("--export") {
+        guard format == "tsv" else { fail("--export: only tsv is supported") }
+        guard let output = takeValue("-o", "--output"), arguments.count == 1 else {
+            fail("usage: dix-scan --export tsv <file.dixsnap> -o out.tsv")
+        }
+        let file = arguments[0]
+        let snapshot: Snapshot
+        do { snapshot = try Snapshot(contentsOf: URL(fileURLWithPath: file)) } catch { fail("\(file): \(error)") }
+        let t0 = Date()
+        do { try exportTSV(snapshot, to: output) } catch { fail("cannot write \(output): \(error)") }
+        print(String(format: "exported %d rows to %@ in %.2f s", snapshot.nodeCount, output, Date().timeIntervalSince(t0)))
+        exit(0)
+    }
+
+    if let file = takeValue("--bench-edit") {
+        let snapshot: Snapshot
+        do { snapshot = try Snapshot(contentsOf: URL(fileURLWithPath: file)) } catch { fail("\(file): \(error)") }
+        benchEdits(snapshot)
+        exit(0)
+    }
 
     if let file = takeValue("--info") {
         let t0 = Date()
@@ -98,14 +144,6 @@ func runCLI() {
         let snapshot: Snapshot
         do { snapshot = try Snapshot(contentsOf: URL(fileURLWithPath: file)) } catch { fail("\(file): \(error)") }
         var out = ""
-        func flagString(_ f: NodeFlags) -> String {
-            var s = ""
-            for (flag, c) in [(NodeFlags.directory, "d"), (.package, "p"), (.symlink, "l"), (.cloudPlaceholder, "c"),
-                              (.hardLinkDuplicate, "h"), (.mountPoint, "m"), (.unreadable, "u")] {
-                s += f.contains(flag) ? c : "-"
-            }
-            return s
-        }
         var stack: [(Int, Int)] = [(0, 0)]
         while let (node, depth) = stack.popLast() {
             out += "\(flagString(snapshot.flags[node]))\t\(snapshot.allocatedSize[node])\t\(snapshot.logicalSize[node])\t\(snapshot.kind(of: node).name)\t\(snapshot.path(of: node))\n"
@@ -164,7 +202,7 @@ func runCLI() {
 
     if let output {
         let t0 = Date()
-        do { try snapshot.write(to: URL(fileURLWithPath: output)) } catch { fail("cannot write \(output): \(error)") }
+        do { try snapshot.write(to: URL(fileURLWithPath: output), compression: compression) } catch { fail("cannot write \(output): \(error)") }
         if !quiet { print(String(format: "wrote:       %@ in %.1f ms", output, Date().timeIntervalSince(t0) * 1000)) }
     }
 

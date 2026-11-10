@@ -25,6 +25,9 @@
 //    ASIZ LSIZ             u64 x N   allocatedSize, logicalSize
 //    NLEN KIDX FLAG        u16 x N   nameLength, kindIndex, flags
 //    NAME                  u8  x M   nameBytes (raw bytes, not necessarily UTF-8)
+//    HLNK  optional, 16 bytes x L: { node u32, device u32, fileID u64 }, the
+//          hard-link table (Snapshot.hardLinks); written only when L > 0, and
+//          absent from files written before it existed
 //
 //  Unknown sections are ignored, so later versions can add data. The loader
 //  treats the file as hostile: every count, length and offset is checked
@@ -73,6 +76,8 @@ enum SnapshotFormat {
     static let prnt = tag("PRNT"), fchd = tag("FCHD"), ccnt = tag("CCNT"), noff = tag("NOFF")
     static let asiz = tag("ASIZ"), lsiz = tag("LSIZ")
     static let nlen = tag("NLEN"), kidx = tag("KIDX"), flag = tag("FLAG")
+    static let hlnk = tag("HLNK")
+    static let hardLinkRecordSize = 16
 }
 
 // MARK: - writing
@@ -97,18 +102,39 @@ private struct ByteWriter {
     }
 }
 
+/// How a .dixsnap file is stored on disk.
+public enum SnapshotFileCompression: Sendable, Hashable {
+    /// the plain format (DIXSNAP1): fastest to read, about 7x larger
+    case none
+    /// LZFSE in independent 4 MiB chunks (DIXSNAPZ, see SnapshotCompression.swift)
+    case lzfse
+}
+
 public extension Snapshot {
-    /// The snapshot encoded as a .dixsnap file.
-    func fileData() throws -> Data {
+    /// The snapshot encoded as a .dixsnap file (by default uncompressed, so
+    /// the bytes are directly comparable).
+    func fileData(compression: SnapshotFileCompression = .none) throws -> Data {
         var data = Data()
-        try encode { data.append(contentsOf: $0) }
+        switch compression {
+        case .none:
+            try encode { data.append(contentsOf: $0) }
+        case .lzfse:
+            try compressedEncode(writeAt: { offset, bytes in
+                if offset == data.count {
+                    data.append(contentsOf: bytes)
+                } else {
+                    data.replaceSubrange(offset ..< offset + bytes.count, with: bytes)
+                }
+            })
+        }
         return data
     }
 
     /// Writes the snapshot as a .dixsnap file, atomically (a temporary file
-    /// in the same folder, then rename). The arrays are written straight from
-    /// memory, without building the file in memory first.
-    func write(to url: URL) throws {
+    /// in the same folder, then rename), compressed with LZFSE unless asked
+    /// not to. The arrays are streamed from memory, without building the
+    /// whole file in memory first.
+    func write(to url: URL, compression: SnapshotFileCompression = .lzfse) throws {
         let path = url.path
         let temporary = path + ".tmp-\(getpid())-\(UInt32.random(in: 0 ... .max))"
         let fd = open(temporary, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o644)
@@ -118,10 +144,11 @@ public extension Snapshot {
             if !closed { close(fd) }
             unlink(temporary)       // no-op once renamed
         }
-        try encode { bytes in
+        func writeAll(_ bytes: UnsafeRawBufferPointer, at position: Int?) throws {
             var offset = 0
             while offset < bytes.count {
-                let written = Darwin.write(fd, bytes.baseAddress! + offset, bytes.count - offset)
+                let written = position.map { Darwin.pwrite(fd, bytes.baseAddress! + offset, bytes.count - offset, off_t($0 + offset)) }
+                    ?? Darwin.write(fd, bytes.baseAddress! + offset, bytes.count - offset)
                 if written < 0 {
                     if errno == EINTR { continue }
                     throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
@@ -129,13 +156,25 @@ public extension Snapshot {
                 offset += written
             }
         }
+        switch compression {
+        case .none:
+            try encode { try writeAll($0, at: nil) }
+        case .lzfse:
+            var end = 0
+            try compressedEncode(writeAt: { offset, bytes in
+                try writeAll(bytes, at: offset == end ? nil : offset)
+                end = max(end, offset + bytes.count)
+            })
+        }
         guard close(fd) == 0 else { closed = true; throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         closed = true
         guard rename(temporary, path) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
     }
 
-    /// Produces the file's bytes in order, as a few large pieces.
-    private func encode(_ sink: (UnsafeRawBufferPointer) throws -> Void) throws {
+    /// Produces the file's bytes in order, as a few large pieces, after
+    /// announcing the total length.
+    internal func encode(announcing length: (Int) throws -> Void = { _ in },
+                         _ sink: (UnsafeRawBufferPointer) throws -> Void) throws {
         if let problem = validate() { throw SnapshotFileError.invalid(problem) }
         guard nodeCount <= Int(UInt32.max), kinds.count <= Int(UInt16.max) + 1 else {
             throw SnapshotFileError.invalid("too many nodes or kinds")
@@ -176,7 +215,7 @@ public extension Snapshot {
         }
         // NodeFlags is a UInt16 OptionSet: same layout as its raw value
         let flagBits = flags.map(\.rawValue)
-        let sections: [Section] = [
+        var sections: [Section] = [
             section(SnapshotFormat.meta, meta.data),
             section(SnapshotFormat.kind, kindTable.data),
             section(SnapshotFormat.prnt, parent),
@@ -190,6 +229,15 @@ public extension Snapshot {
             section(SnapshotFormat.flag, flagBits),
             section(SnapshotFormat.name, nameBytes),
         ]
+        if !hardLinks.isEmpty {
+            // HardLink is { u32, u32, u64 }: 16 bytes, no padding, little-endian here
+            assert(MemoryLayout<HardLink>.stride == SnapshotFormat.hardLinkRecordSize)
+            let links = hardLinks
+            sections.append((SnapshotFormat.hlnk, UInt32(SnapshotFormat.hardLinkRecordSize),
+                             links.count * SnapshotFormat.hardLinkRecordSize, { sink in
+                try links.withUnsafeBytes { try sink($0) }
+            }))
+        }
 
         // lay out offsets
         var offsets: [Int] = []
@@ -214,6 +262,7 @@ public extension Snapshot {
             header.u64(UInt64(offset))
             header.u64(UInt64(s.length))
         }
+        try length(fileLength)
         var position = header.data.count
         try header.data.withUnsafeBytes { try sink($0) }
         let zeros = [UInt8](repeating: 0, count: 8)
@@ -230,7 +279,8 @@ public extension Snapshot {
         try pad(to: fileLength)
     }
 
-    /// Reads a .dixsnap file. Throws on anything malformed; never traps.
+    /// Reads a .dixsnap file, compressed or not. Throws on anything
+    /// malformed; never traps.
     init(contentsOf url: URL) throws {
         // Read, not map: a mapped file truncated by someone else while we
         // parse it would fault.
@@ -238,10 +288,15 @@ public extension Snapshot {
         try self.init(fileData: data)
     }
 
-    /// Decodes a .dixsnap file's bytes. Throws on anything malformed; never traps.
+    /// Decodes a .dixsnap file's bytes, compressed or not. Throws on anything
+    /// malformed; never traps.
     init(fileData data: Data) throws {
         self = try data.withUnsafeBytes { raw in
-            try SnapshotDecoder(raw).decode()
+            if SnapshotContainer.isCompressed(raw) {
+                let plain = try SnapshotContainer.decompress(raw)
+                return try plain.withUnsafeBytes { try SnapshotDecoder($0).decode() }
+            }
+            return try SnapshotDecoder(raw).decode()
         }
     }
 }
@@ -372,6 +427,21 @@ private struct SnapshotDecoder {
             kinds.append(FileKind(identifier: identifier, name: name))
         }
 
+        // HLNK (optional): node u32, device u32, fileID u64; validate() checks the rest
+        var hardLinks: [HardLink] = []
+        if let s = sections[SnapshotFormat.hlnk] {
+            let size = SnapshotFormat.hardLinkRecordSize
+            guard s.elementSize == UInt32(size), s.length % size == 0, s.length / size <= n else {
+                throw SnapshotFileError.malformed("bad hard-link table")
+            }
+            var reader = ByteReader(raw, from: s.offset, length: s.length)
+            hardLinks.reserveCapacity(s.length / size)
+            for _ in 0 ..< s.length / size {
+                let node = try reader.u32(), device = try reader.u32(), fileID = try reader.u64()
+                hardLinks.append(HardLink(node: node, device: device, fileID: fileID))
+            }
+        }
+
         let flagBits = try array(SnapshotFormat.flag, count: n, as: UInt16.self)
         guard flagBits.allSatisfy({ $0 & ~SnapshotFormat.knownFlags == 0 }) else {
             throw SnapshotFileError.malformed("unknown node flags")
@@ -390,7 +460,8 @@ private struct SnapshotDecoder {
             kindIndex: try array(SnapshotFormat.kidx, count: n, as: UInt16.self),
             flags: flagBits.map { NodeFlags(rawValue: $0) },
             nameBytes: try array(SnapshotFormat.name, as: UInt8.self),
-            kinds: kinds)
+            kinds: kinds,
+            hardLinks: hardLinks)
         if let problem = snapshot.validate() { throw SnapshotFileError.invalid(problem) }
         return snapshot
     }

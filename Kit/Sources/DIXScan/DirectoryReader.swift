@@ -66,11 +66,13 @@ struct RawEntry {
     var child: Int32           // job id of the directory to descend, or -1
 }
 
-/// A hard-linked file seen in a directory.
+/// A hard-linked file seen in a directory. `entry` indexes the entries as
+/// read; `nameOffset` identifies the entry after they are sorted.
 struct LinkRecord {
     var device: UInt32
     var fileID: UInt64
     var entry: UInt32
+    var nameOffset: UInt32
 }
 
 /// What a worker learns about one directory.
@@ -214,10 +216,10 @@ final class DirectoryReader {
                   path: path, subdirectories: &subdirectories, issues: &issues)
         }
         // results live until the end of the scan: drop the slack of array growth
-        if result.entries.capacity > result.entries.count + result.entries.count / 4 + 8 {
+        if result.entries.capacity > result.entries.count {
             result.entries = result.entries.withUnsafeBufferPointer { Array($0) }
         }
-        if result.names.capacity > result.names.count + result.names.count / 4 + 64 {
+        if result.names.capacity > result.names.count + 15 {
             result.names = result.names.withUnsafeBufferPointer { Array($0) }
         }
         return (result, fd)
@@ -345,7 +347,8 @@ final class DirectoryReader {
                 default: kind = self.kindSlot(.special(.other)).0
                 }
                 if linkCount > 1 {
-                    result.links.append(LinkRecord(device: device, fileID: fileID, entry: UInt32(entryIndex)))
+                    result.links.append(LinkRecord(device: device, fileID: fileID, entry: UInt32(entryIndex),
+                                                   nameOffset: nameOffset))
                 }
             }
             entry.flags = flags.rawValue

@@ -10,6 +10,12 @@
 //  into two integers, so the hot path is one dictionary lookup without any
 //  allocation, and LaunchServices is asked once per extension per scan.
 //
+//  Some extensions mean one thing to macOS and another on a developer's disk
+//  (".ts" is an MPEG-2 Transport Stream to LaunchServices, and 626,000
+//  TypeScript files in one node_modules-heavy folder). KindRegistry.overrides
+//  settles those, for lowercase spellings only: a camcorder's "CLIP.MTS" or a
+//  recorder's "SHOW.TS" is all capitals and keeps the system's type.
+//
 //  GPL v3
 //
 
@@ -29,6 +35,7 @@ struct KindKey: Hashable {
         case fileExtension = 1      // a file "x.ext"
         case directoryExtension     // a directory "x.ext": a package if its UTType conforms to .package
         case special                // low = SpecialKind
+        case fileExtensionAllCaps   // a file "X.EXT" (letters all capitals): the system's type, no override
     }
 
     enum SpecialKind: UInt64 {
@@ -49,14 +56,20 @@ struct KindKey: Hashable {
         let length = count - dot - 1
         guard length > 0 && length <= 16 else { return nil }
         var low: UInt64 = 0, high: UInt64 = 0
+        var upper = false, lower = false
         for i in 0 ..< length {
             var byte = name[dot + 1 + i]
             // printable ASCII only, no spaces: anything else is not a real extension
             guard byte > 0x20 && byte < 0x7F else { return nil }
-            if byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z") { byte += 32 }
+            if byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z") {
+                byte += 32
+                upper = true
+            } else if byte >= UInt8(ascii: "a") && byte <= UInt8(ascii: "z") {
+                lower = true
+            }
             if i < 8 { low |= UInt64(byte) << (8 * UInt64(i)) } else { high |= UInt64(byte) << (8 * UInt64(i - 8)) }
         }
-        let category: Category = directory ? .directoryExtension : .fileExtension
+        let category: Category = directory ? .directoryExtension : (upper && !lower ? .fileExtensionAllCaps : .fileExtension)
         return KindKey(low: low, high: high, category: category.rawValue, length: UInt8(length))
     }
 
@@ -126,10 +139,44 @@ final class KindRegistry: @unchecked Sendable {
         return FileKind(identifier: type.identifier, name: name.prefix(1).uppercased() + name.dropFirst())
     }
 
+    /// Extensions whose system type is wrong on a developer's disk, checked
+    /// before UTType for lowercase spellings. Measured on ~/_greek, ~/a, ~/b
+    /// and /Applications (2026-11): the left side is what LaunchServices said.
+    ///
+    /// - ts, mts, cts: "MPEG-2 Transport Stream", "AVCHD MPEG-2 Transport
+    ///   Stream", unknown. TypeScript and its ES-module / CommonJS variants
+    ///   (also .d.ts): 703,000 files, 5.1 GB; no transport stream among them.
+    /// - tsx: "Script" (some app's description of com.microsoft.typescript).
+    /// - cjs, jsx: unknown ("CJS File"). CommonJS modules and JSX, shown as
+    ///   JavaScript like .js and .mjs.
+    /// - bin: "MacBinary archive", a 1990s format; today's .bin files are
+    ///   firmware, model weights and disc images (1.8 GB, 1,325 files).
+    /// - pkl: "Pkl Source" (Apple's config language); on disk these were
+    ///   Python pickles (255 MB in 16 files).
+    ///
+    /// Left alone, though they are ambiguous too: .m (Objective-C, not
+    /// MATLAB), .h, .pl (Perl), .r (Rez), .fs (GLSL fragment shader, not F#),
+    /// .exs (Logic EXS instrument, not Elixir), .pxd (Pixelmator, not Cython),
+    /// .sql; and extensions macOS does not know at all keep Finder's "RS File"
+    /// style (.rs, .go, .mod, .d, .sol, .map).
+    static let overrides: [String: FileKind] = {
+        let typeScript = FileKind(identifier: "com.microsoft.typescript", name: "TypeScript")
+        let javaScript = describe(.javaScript)
+        return [
+            "ts": typeScript, "mts": typeScript, "cts": typeScript, "tsx": typeScript,
+            "cjs": javaScript, "jsx": javaScript,
+            "bin": FileKind(identifier: "", name: "BIN File"),
+            "pkl": FileKind(identifier: "", name: "Python Pickle"),
+        ]
+    }()
+
     private static func resolve(_ key: KindKey) -> (FileKind, Bool) {
         switch KindKey.Category(rawValue: key.category) {
-        case .fileExtension:
+        case .fileExtension, .fileExtensionAllCaps:
             let ext = key.extensionString
+            if key.category == KindKey.Category.fileExtension.rawValue, let kind = overrides[ext] {
+                return (kind, false)
+            }
             if let type = UTType(filenameExtension: ext), !type.isDynamic {
                 return (describe(type), false)
             }

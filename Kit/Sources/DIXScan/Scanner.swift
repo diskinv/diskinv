@@ -76,7 +76,10 @@ public struct ScanResult: Sendable {
 
 public final class Scanner: @unchecked Sendable {
     public struct Options: Sendable {
-        /// worker threads; default: all active processors
+        /// worker threads; default: all active processors. Capping it at 8
+        /// was measured and is slower (15-core machine, 5 P + 10 E cores,
+        /// warm cache, median of 8 runs): ~/b 0.725 s at 8 vs 0.668 s at 15,
+        /// /Applications 1.646 vs 1.489 s, /System/Library 1.685 vs 1.650 s.
         public var workerCount: Int
         /// how many issues to keep (all are counted)
         public var maxIssues: Int

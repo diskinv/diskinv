@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>Disk Inventory X</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.derlien.DiskInventoryX.next</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Disk Inventory X</string>
+	<key>CFBundleDisplayName</key>
+	<string>Disk Inventory X</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>3.0</string>
+	<key>CFBundleVersion</key>
+	<string>300</string>
+	<key>CFBundleSignature</key>
+	<string>DIX </string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Disk Inventory X · GPL v3</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Folder</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.folder</string>
+				<string>public.volume</string>
+				<string>com.apple.package</string>
+			</array>
+			<key>NSDocumentClass</key>
+			<string>ScanDocument</string>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>com.derlien.diskinventoryx.dixsnap</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.derlien.diskinventoryx.dixsnap</string>
+			</array>
+			<key>NSDocumentClass</key>
+			<string>ScanDocument</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>AppIcon</string>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.derlien.diskinventoryx.dixsnap</string>
+			<key>UTTypeDescription</key>
+			<string>Disk Inventory X Scan</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeIconFile</key>
+			<string>AppIcon</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>dixsnap</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Disk Inventory X needs to access these files to inspect their sizes and other file attributes. No data will be read.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Disk Inventory X needs to access these files to inspect their sizes and other file attributes. No data will be read.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Disk Inventory X needs to access these files to inspect their sizes and other file attributes. No data will be read.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>Disk Inventory X needs to access these files to inspect their sizes and other file attributes. No data will be read.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Disk Inventory X needs to access these files to inspect their sizes and other file attributes. No data will be read.</string>
+	<key>NSFileProviderDomainUsageDescription</key>
+	<string>Disk Inventory X needs to see the sizes of files in cloud storage. It never downloads them.</string>
+</dict>
+</plist>
